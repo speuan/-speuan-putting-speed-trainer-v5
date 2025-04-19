@@ -114,10 +114,25 @@ button:hover:not(:disabled) {
     max-width: 640px;
     margin-left: auto;
     margin-right: auto;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.debug-container h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+    color: #2c3e50;
 }
 
 #debug-info {
     white-space: pre-wrap; /* Preserve whitespace */
+    margin: 0;
+    padding: 0.5rem;
+    background-color: #f0f0f0;
+    border-radius: 2px;
+    line-height: 1.4;
+    color: #333;
 }
 
 /* Footer */

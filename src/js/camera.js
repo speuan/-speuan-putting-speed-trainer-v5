@@ -68,6 +68,19 @@ async function startCamera() {
     try {
         updateDebugInfo('Starting camera...');
         
+        // Check if camera access is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Camera API not available in this browser/device');
+        }
+        
+        updateDebugInfo('Camera API available, checking permissions...');
+        
+        // If we already have a stream, stop it first
+        if (stream) {
+            updateDebugInfo('Stopping existing camera stream before starting new one');
+            stopCamera();
+        }
+        
         // Request camera access with preferred settings
         // Special handling for iOS
         const constraints = {
@@ -84,21 +97,37 @@ async function startCamera() {
         try {
             // iOS Safari requires user interaction before getUserMedia
             stream = await navigator.mediaDevices.getUserMedia(constraints);
-            updateDebugInfo('Camera access granted');
+            updateDebugInfo('Camera access granted with standard constraints');
         } catch (permissionError) {
-            updateDebugInfo('Camera permission error: ' + permissionError.message);
+            updateDebugInfo('Camera error: ' + permissionError.name + ': ' + permissionError.message);
+            
             // Try with simpler constraints if the first attempt failed
-            if (permissionError.name === 'OverconstrainedError' || permissionError.name === 'ConstraintNotSatisfiedError') {
+            if (permissionError.name === 'OverconstrainedError' || 
+                permissionError.name === 'ConstraintNotSatisfiedError' || 
+                permissionError.name === 'NotReadableError') {
+                
                 updateDebugInfo('Trying with simpler constraints');
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: true,
-                    audio: false
-                });
-                updateDebugInfo('Camera access granted with simplified constraints');
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: true,
+                        audio: false
+                    });
+                    updateDebugInfo('Camera access granted with simplified constraints');
+                } catch (simpleError) {
+                    updateDebugInfo('Simple constraints also failed: ' + simpleError.message);
+                    throw simpleError;
+                }
             } else {
                 throw permissionError; // Re-throw if it's not a constraints issue
             }
         }
+        
+        // Verify we got a usable stream
+        if (!stream || !stream.active) {
+            throw new Error('Camera stream not active after permissions granted');
+        }
+        
+        updateDebugInfo('Stream active, tracks: ' + stream.getTracks().length);
         
         // Connect stream to video element
         video.srcObject = stream;
@@ -108,23 +137,30 @@ async function startCamera() {
             updateDebugInfo('Applying iOS specific camera fixes');
             video.setAttribute('playsinline', true); // Ensure this attribute is set
             video.muted = true; // Ensure video is muted to avoid autoplay issues
+            
+            // iOS requires a delay sometimes before playing
+            setTimeout(() => {
+                video.play().then(() => {
+                    updateDebugInfo('Video playback started after delay');
+                }).catch(e => {
+                    updateDebugInfo('Failed to play video after delay: ' + e.message);
+                });
+            }, 100);
+        } else {
+            // Try to play the video immediately for non-iOS
+            video.play().then(() => {
+                updateDebugInfo('Video playback started immediately');
+            }).catch(e => {
+                updateDebugInfo('Failed to play video immediately: ' + e.message);
+            });
         }
         
-        // Try to play the video immediately to help with iOS
-        try {
-            await video.play();
-            updateDebugInfo('Video playback started');
-        } catch (playError) {
-            updateDebugInfo('Auto-play failed, will try on metadata: ' + playError.message);
-            // Continue anyway, we'll try again in the metadata event
-        }
-        
-        // Set canvas dimensions to match video
+        // Set event listeners for video
         video.onloadedmetadata = () => {
             // Make canvas match video dimensions exactly
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            updateDebugInfo(`Camera started: ${video.videoWidth}x${video.videoHeight}`);
+            updateDebugInfo(`Video metadata loaded: ${video.videoWidth}x${video.videoHeight}`);
             
             // Try playing again after metadata is loaded (important for iOS)
             if (video.paused) {
@@ -136,11 +172,17 @@ async function startCamera() {
         
         // Make sure video is playing (especially important for iOS)
         video.oncanplay = () => {
+            updateDebugInfo('Video can play event fired');
             if (video.paused) {
                 video.play().catch(e => {
                     updateDebugInfo('Error playing video on canplay: ' + e.message);
                 });
             }
+        };
+        
+        // Add error handling for video element
+        video.onerror = (e) => {
+            updateDebugInfo('Video element error: ' + (video.error ? video.error.message : e));
         };
         
         // Update UI
@@ -151,8 +193,8 @@ async function startCamera() {
         
     } catch (error) {
         console.error('Error accessing camera:', error);
-        updateDebugInfo('Camera error: ' + error.message);
-        alert('Could not access the camera. Please allow camera access and try again.');
+        updateDebugInfo('Camera access FAILED: ' + error.name + ': ' + error.message);
+        alert('Could not access the camera. Please allow camera access and try again: ' + error.message);
         
         // Re-enable start button
         startCameraButton.disabled = false;
