@@ -6,6 +6,7 @@
 let model = null;
 let isModelLoading = false;
 let labels = ['Ball', 'Coin']; // Labels for our detection classes
+const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
 
 /**
  * Initialize the detection model
@@ -57,16 +58,58 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
         // Get canvas image data
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         
-        // Prepare image for the model
-        const imgTensor = tf.browser.fromPixels(imageData)
-            .expandDims(0); // Add batch dimension
+        // Prepare image for the model - resize to 640x640
+        const imgTensor = tf.tidy(() => {
+            // Convert to tensor
+            const tensor = tf.browser.fromPixels(imageData);
+            
+            // Resize to model input dimensions (maintaining aspect ratio)
+            const [height, width] = tensor.shape.slice(0, 2);
+            
+            // Calculate scaling to maintain aspect ratio but fit within 640x640
+            // We'll create a square tensor and pad the image
+            const scale = MODEL_INPUT_SIZE / Math.max(height, width);
+            const newHeight = Math.round(height * scale);
+            const newWidth = Math.round(width * scale);
+            
+            // Resize image
+            const resized = tf.image.resizeBilinear(tensor, [newHeight, newWidth]);
+            
+            // Create a black canvas of 640x640
+            const padded = tf.zeros([MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
+            
+            // Calculate offsets to center the image
+            const yOffset = Math.floor((MODEL_INPUT_SIZE - newHeight) / 2);
+            const xOffset = Math.floor((MODEL_INPUT_SIZE - newWidth) / 2);
+            
+            // Place the resized image in the center of the canvas
+            const sliceStart = [yOffset, xOffset, 0];
+            const sliceSize = [newHeight, newWidth, 3];
+            
+            // Return padded tensor with image placed in center
+            return tf.tidy(() => {
+                const slice = tf.slice(padded, sliceStart, sliceSize);
+                const placed = padded.add(tf.pad(
+                    resized, 
+                    [[yOffset, MODEL_INPUT_SIZE - newHeight - yOffset], 
+                     [xOffset, MODEL_INPUT_SIZE - newWidth - xOffset], 
+                     [0, 0]]
+                ));
+                
+                // Expand dims to add batch size
+                return placed.expandDims(0);
+            });
+        });
+        
+        // Store original dimensions for mapping back to canvas coordinates
+        const originalWidth = canvas.width;
+        const originalHeight = canvas.height;
         
         // Run inference
-        console.log('Running object detection...');
+        console.log('Running object detection on resized image (640x640)...');
         const predictions = await model.executeAsync(imgTensor);
         
         // Process results (format depends on specific YOLO model output)
-        // This part might need adjustments based on the exact model output format
         const boxes = await predictions[0].arraySync();
         const scores = await predictions[1].arraySync();
         const classes = await predictions[2].arraySync();
@@ -76,7 +119,7 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
         predictions.forEach(tensor => tensor.dispose());
         
         // Draw results on canvas
-        drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold);
+        drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold, originalWidth, originalHeight);
         
         // Return detected objects for further processing
         return processDetections(boxes[0], scores[0], classes[0], threshold);
@@ -119,8 +162,10 @@ function processDetections(boxes, scores, classes, threshold) {
  * @param {Array} scores - Detection confidence scores
  * @param {Array} classes - Class indices
  * @param {number} threshold - Confidence threshold
+ * @param {number} originalWidth - Original canvas width
+ * @param {number} originalHeight - Original canvas height
  */
-function drawDetections(canvas, ctx, boxes, scores, classes, threshold) {
+function drawDetections(canvas, ctx, boxes, scores, classes, threshold, originalWidth, originalHeight) {
     // Clear any previous drawings
     ctx.lineWidth = 2;
     ctx.font = '16px Arial';
@@ -128,12 +173,14 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold) {
     
     for (let i = 0; i < scores.length; i++) {
         if (scores[i] > threshold) {
-            // Get box coordinates
+            // Get box coordinates - note these are normalized [0-1] values
             const [y, x, height, width] = boxes[i];
-            const boxX = x * canvas.width;
-            const boxY = y * canvas.height;
-            const boxWidth = width * canvas.width;
-            const boxHeight = height * canvas.height;
+            
+            // Scale to canvas size
+            const boxX = x * originalWidth;
+            const boxY = y * originalHeight;
+            const boxWidth = width * originalWidth;
+            const boxHeight = height * originalHeight;
             
             // Draw box based on class
             const className = labels[classes[i]];
