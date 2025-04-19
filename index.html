@@ -2,13 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>Golf Putting Speed Trainer</title>
     <link rel="stylesheet" href="src/css/styles.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#3498db">
-    <!-- TensorFlow.js -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <!-- TensorFlow.js - use the CPU backend version for better iOS compatibility -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0"></script>
 </head>
 <body>
     <header>
@@ -17,7 +19,7 @@
     
     <main>
         <div class="camera-container">
-            <video id="video" playsinline autoplay></video>
+            <video id="video" playsinline autoplay muted></video>
             <canvas id="canvas" class="hidden"></canvas>
             <div class="controls">
                 <button id="start-camera">Start Camera</button>
@@ -35,6 +37,10 @@
             <div id="speed-results">
                 <p>Ball speed: <span id="ball-speed">0</span> m/s</p>
             </div>
+        </div>
+        
+        <div class="debug-container">
+            <p>Debug info: <span id="debug-info">None</span></p>
         </div>
     </main>
     
@@ -58,6 +64,10 @@
                     });
             });
         }
+        
+        // Add debugging for iOS
+        document.getElementById('debug-info').textContent = 
+            `UserAgent: ${navigator.userAgent}, Platform: ${navigator.platform}`;
     </script>
 </body>
 </html> 

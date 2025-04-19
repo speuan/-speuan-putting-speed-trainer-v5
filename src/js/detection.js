@@ -8,6 +8,17 @@ let isModelLoading = false;
 let labels = ['Ball', 'Coin']; // Labels for our detection classes
 const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
 
+// iOS detection
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+// Debug function (will be replaced by the one from camera.js)
+let updateDebugInfo = function(msg) {
+    console.log(msg);
+    if (window.debugInfo) {
+        window.debugInfo.textContent += '\n' + msg;
+    }
+};
+
 /**
  * Initialize the detection model
  * @returns {Promise} Promise that resolves when the model is loaded
@@ -32,12 +43,26 @@ async function initDetectionModel() {
     isModelLoading = true;
     
     try {
-        console.log('Loading object detection model...');
+        // Set the backend to CPU for iOS (WebGL can be problematic)
+        if (isIOS) {
+            updateDebugInfo('Setting TensorFlow.js backend to CPU for iOS');
+            await tf.setBackend('cpu');
+        }
+        
+        updateDebugInfo('Loading object detection model...');
         model = await tf.loadGraphModel('my_model_web_model/model.json');
-        console.log('Model loaded successfully');
+        updateDebugInfo('Model loaded successfully, warming up...');
+        
+        // Warm up the model with a dummy tensor
+        const dummyInput = tf.zeros([1, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
+        await model.executeAsync(dummyInput);
+        dummyInput.dispose();
+        
+        updateDebugInfo('Model warm-up complete');
         isModelLoading = false;
         return model;
     } catch (error) {
+        updateDebugInfo('Error loading model: ' + error.message);
         console.error('Error loading model:', error);
         isModelLoading = false;
         throw error;
@@ -52,80 +77,129 @@ async function initDetectionModel() {
  */
 async function detectObjects(canvas, ctx, threshold = 0.5) {
     try {
+        // Update debug function if available from camera.js
+        if (typeof window.updateDebugInfo === 'function') {
+            updateDebugInfo = window.updateDebugInfo;
+        }
+        
         // Make sure model is loaded
         await initDetectionModel();
         
+        updateDebugInfo(`Canvas size: ${canvas.width}x${canvas.height}`);
+        
         // Get canvas image data
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        updateDebugInfo(`Got image data: ${imageData.width}x${imageData.height}`);
         
         // Prepare image for the model - resize to 640x640
-        const imgTensor = tf.tidy(() => {
-            // Convert to tensor
-            const tensor = tf.browser.fromPixels(imageData);
-            
-            // Resize to model input dimensions (maintaining aspect ratio)
-            const [height, width] = tensor.shape.slice(0, 2);
-            
-            // Calculate scaling to maintain aspect ratio but fit within 640x640
-            // We'll create a square tensor and pad the image
-            const scale = MODEL_INPUT_SIZE / Math.max(height, width);
-            const newHeight = Math.round(height * scale);
-            const newWidth = Math.round(width * scale);
-            
-            // Resize image
-            const resized = tf.image.resizeBilinear(tensor, [newHeight, newWidth]);
-            
-            // Create a black canvas of 640x640
-            const padded = tf.zeros([MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
-            
-            // Calculate offsets to center the image
-            const yOffset = Math.floor((MODEL_INPUT_SIZE - newHeight) / 2);
-            const xOffset = Math.floor((MODEL_INPUT_SIZE - newWidth) / 2);
-            
-            // Place the resized image in the center of the canvas
-            const sliceStart = [yOffset, xOffset, 0];
-            const sliceSize = [newHeight, newWidth, 3];
-            
-            // Return padded tensor with image placed in center
-            return tf.tidy(() => {
-                const slice = tf.slice(padded, sliceStart, sliceSize);
-                const placed = padded.add(tf.pad(
-                    resized, 
-                    [[yOffset, MODEL_INPUT_SIZE - newHeight - yOffset], 
-                     [xOffset, MODEL_INPUT_SIZE - newWidth - xOffset], 
-                     [0, 0]]
-                ));
+        let imgTensor;
+        try {
+            imgTensor = tf.tidy(() => {
+                // Convert to tensor
+                updateDebugInfo('Creating tensor from image data');
+                const tensor = tf.browser.fromPixels(imageData);
+                updateDebugInfo(`Created tensor: ${tensor.shape}`);
                 
-                // Expand dims to add batch size
-                return placed.expandDims(0);
+                // Resize to model input dimensions (maintaining aspect ratio)
+                const [height, width] = tensor.shape.slice(0, 2);
+                
+                // In case of iOS, use a simpler approach to avoid memory issues
+                if (isIOS) {
+                    updateDebugInfo('Using iOS-friendly resize to 640x640');
+                    const resized = tf.image.resizeBilinear(tensor, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+                    return resized.expandDims(0);
+                }
+                
+                // For other platforms, maintain aspect ratio with padding
+                const scale = MODEL_INPUT_SIZE / Math.max(height, width);
+                const newHeight = Math.round(height * scale);
+                const newWidth = Math.round(width * scale);
+                
+                updateDebugInfo(`Resizing to ${newWidth}x${newHeight} and padding to ${MODEL_INPUT_SIZE}x${MODEL_INPUT_SIZE}`);
+                
+                // Resize image
+                const resized = tf.image.resizeBilinear(tensor, [newHeight, newWidth]);
+                
+                // Create a black canvas of 640x640
+                const padded = tf.zeros([MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
+                
+                // Calculate offsets to center the image
+                const yOffset = Math.floor((MODEL_INPUT_SIZE - newHeight) / 2);
+                const xOffset = Math.floor((MODEL_INPUT_SIZE - newWidth) / 2);
+                
+                // Place the resized image in the center using simpler method for iOS
+                return tf.tidy(() => {
+                    const placed = padded.add(tf.pad(
+                        resized,
+                        [[yOffset, MODEL_INPUT_SIZE - newHeight - yOffset], 
+                        [xOffset, MODEL_INPUT_SIZE - newWidth - xOffset], 
+                        [0, 0]]
+                    ));
+                    
+                    // Expand dims to add batch size
+                    return placed.expandDims(0);
+                });
             });
-        });
+            
+            updateDebugInfo(`Final input tensor shape: ${imgTensor.shape}`);
+        } catch (tensorError) {
+            updateDebugInfo('Error creating input tensor: ' + tensorError.message);
+            throw tensorError;
+        }
         
         // Store original dimensions for mapping back to canvas coordinates
         const originalWidth = canvas.width;
         const originalHeight = canvas.height;
         
         // Run inference
-        console.log('Running object detection on resized image (640x640)...');
-        const predictions = await model.executeAsync(imgTensor);
+        updateDebugInfo('Running model inference...');
         
-        // Process results (format depends on specific YOLO model output)
-        const boxes = await predictions[0].arraySync();
-        const scores = await predictions[1].arraySync();
-        const classes = await predictions[2].arraySync();
+        // For iOS we need to handle memory more carefully
+        let predictions;
+        try {
+            predictions = await model.executeAsync(imgTensor);
+            updateDebugInfo('Model execution complete');
+        } catch (inferenceError) {
+            updateDebugInfo('Error during inference: ' + inferenceError.message);
+            throw inferenceError;
+        } finally {
+            // Clean up input tensor regardless of success/failure
+            imgTensor.dispose();
+        }
         
-        // Clean up tensors
-        imgTensor.dispose();
-        predictions.forEach(tensor => tensor.dispose());
-        
-        // Draw results on canvas
-        drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold, originalWidth, originalHeight);
-        
-        // Return detected objects for further processing
-        return processDetections(boxes[0], scores[0], classes[0], threshold);
-        
+        try {
+            // Process results 
+            updateDebugInfo('Processing detection results');
+            const boxes = await predictions[0].arraySync();
+            const scores = await predictions[1].arraySync();
+            const classes = await predictions[2].arraySync();
+            
+            // Clean up result tensors
+            predictions.forEach(tensor => tensor.dispose());
+            
+            // Report highest confidence scores for debugging
+            const highestScores = [];
+            for (let i = 0; i < Math.min(scores[0].length, 5); i++) {
+                highestScores.push({
+                    class: labels[classes[0][i]],
+                    score: scores[0][i]
+                });
+            }
+            updateDebugInfo('Top detections: ' + JSON.stringify(highestScores));
+            
+            // Draw results on canvas
+            drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold, originalWidth, originalHeight);
+            
+            // Return detected objects for further processing
+            return processDetections(boxes[0], scores[0], classes[0], threshold);
+        } catch (processError) {
+            updateDebugInfo('Error processing results: ' + processError.message);
+            throw processError;
+        }
     } catch (error) {
+        updateDebugInfo('Detection error: ' + error.message);
         console.error('Detection error:', error);
+        throw error;
     }
 }
 
@@ -208,4 +282,5 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
 
 // Export functions for use in other modules
 window.initDetectionModel = initDetectionModel;
-window.detectObjects = detectObjects; 
+window.detectObjects = detectObjects;
+window.updateDebugInfo = updateDebugInfo; 

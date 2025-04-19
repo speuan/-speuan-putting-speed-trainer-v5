@@ -11,12 +11,16 @@ let stopCameraButton;
 let captureFrameButton;
 let detectObjectsButton;
 let detectionStatus;
+let debugInfo;
 
 // Stream reference
 let stream = null;
 
 // App state reference
 let appState = null;
+
+// iOS detection
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
 /**
  * Initialize camera handling
@@ -29,12 +33,13 @@ function initCamera(state) {
     // Get DOM elements
     video = document.getElementById('video');
     canvas = document.getElementById('canvas');
-    context = canvas.getContext('2d');
+    context = canvas.getContext('2d', { willReadFrequently: true }); // Optimize for iOS
     startCameraButton = document.getElementById('start-camera');
     stopCameraButton = document.getElementById('stop-camera');
     captureFrameButton = document.getElementById('capture-frame');
     detectObjectsButton = document.getElementById('detect-objects');
     detectionStatus = document.getElementById('detection-status');
+    debugInfo = document.getElementById('debug-info');
     
     // Set up event listeners
     startCameraButton.addEventListener('click', startCamera);
@@ -42,10 +47,16 @@ function initCamera(state) {
     captureFrameButton.addEventListener('click', captureFrame);
     detectObjectsButton.addEventListener('click', runObjectDetection);
     
+    // Add additional debug info
+    updateDebugInfo('Camera module initialized');
+    
     // Try to initialize detection model in the background
     if (typeof initDetectionModel === 'function') {
-        initDetectionModel().catch(err => {
-            console.warn('Model preloading failed, will try again later:', err);
+        updateDebugInfo('Preloading model...');
+        initDetectionModel().then(() => {
+            updateDebugInfo('Model preloaded successfully');
+        }).catch(err => {
+            updateDebugInfo('Model preloading failed: ' + err.message);
         });
     }
 }
@@ -55,25 +66,49 @@ function initCamera(state) {
  */
 async function startCamera() {
     try {
+        updateDebugInfo('Starting camera...');
+        
         // Request camera access with preferred settings
+        // Special handling for iOS
         const constraints = {
+            audio: false,
             video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
+                width: { ideal: isIOS ? 640 : 1280 },
+                height: { ideal: isIOS ? 480 : 720 },
                 facingMode: 'environment' // Use back camera on mobile devices
             }
         };
         
+        updateDebugInfo('Requesting camera with constraints: ' + JSON.stringify(constraints));
+        
+        // iOS Safari requires user interaction before getUserMedia
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         
         // Connect stream to video element
         video.srcObject = stream;
         
+        // iOS Safari specific fixes
+        if (isIOS) {
+            updateDebugInfo('Applying iOS specific camera fixes');
+            video.setAttribute('playsinline', true); // Ensure this attribute is set
+            video.muted = true; // Ensure video is muted to avoid autoplay issues
+        }
+        
         // Set canvas dimensions to match video
         video.onloadedmetadata = () => {
+            // Make canvas match video dimensions exactly
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            console.log(`Camera started: ${video.videoWidth} x ${video.videoHeight}`);
+            updateDebugInfo(`Camera started: ${video.videoWidth}x${video.videoHeight}`);
+        };
+        
+        // Make sure video is playing (especially important for iOS)
+        video.oncanplay = () => {
+            if (video.paused) {
+                video.play().catch(e => {
+                    updateDebugInfo('Error playing video: ' + e.message);
+                });
+            }
         };
         
         // Update UI
@@ -84,6 +119,7 @@ async function startCamera() {
         
     } catch (error) {
         console.error('Error accessing camera:', error);
+        updateDebugInfo('Camera error: ' + error.message);
         alert('Could not access the camera. Please allow camera access and try again.');
     }
 }
@@ -104,7 +140,7 @@ function stopCamera() {
         captureFrameButton.disabled = true;
         detectObjectsButton.disabled = true;
         
-        console.log('Camera stopped');
+        updateDebugInfo('Camera stopped');
     }
 }
 
@@ -114,16 +150,20 @@ function stopCamera() {
 function captureFrame() {
     if (!stream) return;
     
-    // Draw current video frame to canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Show canvas (normally hidden)
-    canvas.classList.remove('hidden');
-    
-    // Display results container
-    document.querySelector('.results-container').classList.remove('hidden');
-    
-    console.log('Frame captured');
+    try {
+        // Draw current video frame to canvas
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Show canvas (normally hidden)
+        canvas.classList.remove('hidden');
+        
+        // Display results container
+        document.querySelector('.results-container').classList.remove('hidden');
+        
+        updateDebugInfo(`Frame captured: ${canvas.width}x${canvas.height}`);
+    } catch (error) {
+        updateDebugInfo('Error capturing frame: ' + error.message);
+    }
 }
 
 /**
@@ -139,6 +179,7 @@ async function runObjectDetection() {
     
     // Update status
     detectionStatus.textContent = 'Running...';
+    updateDebugInfo('Starting object detection...');
     
     // Run detection with 50% confidence threshold
     try {
@@ -147,11 +188,15 @@ async function runObjectDetection() {
             detectObjectsButton.disabled = true;
             
             // Run detection
+            updateDebugInfo('Calling detectObjects...');
             const detections = await detectObjects(canvas, context, 0.5);
             
             // Update status with detection results
             if (detections && detections.length > 0) {
-                detectionStatus.textContent = `Found ${detections.length} object(s)`;
+                const message = `Found ${detections.length} object(s): ` + 
+                    detections.map(d => `${d.class}(${Math.round(d.score*100)}%)`).join(', ');
+                detectionStatus.textContent = message;
+                updateDebugInfo(message);
                 
                 // Calculate ball speed if we have ball detections
                 if (detections.some(d => d.class === 'Ball')) {
@@ -159,6 +204,7 @@ async function runObjectDetection() {
                 }
             } else {
                 detectionStatus.textContent = 'No objects detected';
+                updateDebugInfo('No objects detected above 50% threshold');
                 document.getElementById('ball-speed').textContent = '0';
             }
             
@@ -166,10 +212,12 @@ async function runObjectDetection() {
             detectObjectsButton.disabled = false;
         } else {
             detectionStatus.textContent = 'Detection module not loaded';
+            updateDebugInfo('ERROR: Detection module not loaded');
         }
     } catch (error) {
         console.error('Detection failed:', error);
         detectionStatus.textContent = 'Detection failed: ' + error.message;
+        updateDebugInfo('Detection error: ' + error.message);
         detectObjectsButton.disabled = false;
     }
 }
@@ -193,8 +241,30 @@ function updateBallSpeed(detections) {
     }
     
     document.getElementById('ball-speed').textContent = speed;
-    console.log(`Ball speed: ${speed} m/s`);
+    updateDebugInfo(`Ball speed: ${speed} m/s`);
+}
+
+/**
+ * Update debug information
+ * @param {string} message - Debug message
+ */
+function updateDebugInfo(message) {
+    const timestamp = new Date().toISOString().substring(11, 19);
+    const currentDebug = debugInfo.textContent;
+    
+    // Only keep the most recent 5 debug messages
+    const lines = currentDebug.split('\n');
+    if (lines.length > 5) {
+        lines.shift(); // Remove oldest line
+    }
+    
+    // Add new message
+    lines.push(`[${timestamp}] ${message}`);
+    
+    // Update display
+    debugInfo.textContent = lines.join('\n');
 }
 
 // Export functions
-window.initCamera = initCamera; 
+window.initCamera = initCamera;
+window.updateDebugInfo = updateDebugInfo; 
