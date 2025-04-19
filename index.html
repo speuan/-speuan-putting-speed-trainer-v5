@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golf Putting Speed Trainer</title>
+    <link rel="stylesheet" href="src/css/styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#3498db">
+</head>
+<body>
+    <header>
+        <h1>Golf Putting Speed Trainer</h1>
+    </header>
+    
+    <main>
+        <div class="camera-container">
+            <video id="video" playsinline autoplay></video>
+            <canvas id="canvas" class="hidden"></canvas>
+            <div class="controls">
+                <button id="start-camera">Start Camera</button>
+                <button id="capture-frame" disabled>Capture</button>
+                <button id="stop-camera" disabled>Stop Camera</button>
+            </div>
+        </div>
+        
+        <div class="results-container hidden">
+            <h2>Results</h2>
+            <div id="speed-results">
+                <p>Ball speed: <span id="ball-speed">0</span> m/s</p>
+            </div>
+        </div>
+    </main>
+    
+    <footer>
+        <p>&copy; 2024 Golf Putting Speed Trainer</p>
+    </footer>
+
+    <script src="src/js/app.js"></script>
+    <script src="src/js/camera.js"></script>
+    <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(registration => {
+                        console.log('Service Worker registered:', registration);
+                    })
+                    .catch(error => {
+                        console.error('Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+</body>
+</html> 
