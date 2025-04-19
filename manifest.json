@@ -2,7 +2,7 @@
   "name": "Golf Putting Speed Trainer",
   "short_name": "Putt Trainer",
   "description": "Analyze the speed and trajectory of golf putts using your mobile camera",
-  "start_url": "/index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#3498db",

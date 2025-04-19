@@ -4,15 +4,15 @@
 
 const CACHE_NAME = 'putting-speed-trainer-v1';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/src/css/styles.css',
-  '/src/js/app.js',
-  '/src/js/camera.js',
-  '/src/js/detection.js',
+  './',
+  './index.html',
+  './manifest.json',
+  './src/css/styles.css',
+  './src/js/app.js',
+  './src/js/camera.js',
+  './src/js/detection.js',
   'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js',
-  '/my_model_web_model/model.json'
+  './my_model_web_model/model.json'
   // Model shards will be cached by TensorFlow.js
 ];
 

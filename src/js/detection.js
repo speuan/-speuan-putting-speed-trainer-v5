@@ -50,7 +50,7 @@ async function initDetectionModel() {
         }
         
         updateDebugInfo('Loading object detection model...');
-        model = await tf.loadGraphModel('my_model_web_model/model.json');
+        model = await tf.loadGraphModel('./my_model_web_model/model.json');
         updateDebugInfo('Model loaded successfully, warming up...');
         
         // Warm up the model with a dummy tensor

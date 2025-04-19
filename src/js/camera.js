@@ -81,8 +81,24 @@ async function startCamera() {
         
         updateDebugInfo('Requesting camera with constraints: ' + JSON.stringify(constraints));
         
-        // iOS Safari requires user interaction before getUserMedia
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        try {
+            // iOS Safari requires user interaction before getUserMedia
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            updateDebugInfo('Camera access granted');
+        } catch (permissionError) {
+            updateDebugInfo('Camera permission error: ' + permissionError.message);
+            // Try with simpler constraints if the first attempt failed
+            if (permissionError.name === 'OverconstrainedError' || permissionError.name === 'ConstraintNotSatisfiedError') {
+                updateDebugInfo('Trying with simpler constraints');
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true,
+                    audio: false
+                });
+                updateDebugInfo('Camera access granted with simplified constraints');
+            } else {
+                throw permissionError; // Re-throw if it's not a constraints issue
+            }
+        }
         
         // Connect stream to video element
         video.srcObject = stream;
@@ -94,19 +110,35 @@ async function startCamera() {
             video.muted = true; // Ensure video is muted to avoid autoplay issues
         }
         
+        // Try to play the video immediately to help with iOS
+        try {
+            await video.play();
+            updateDebugInfo('Video playback started');
+        } catch (playError) {
+            updateDebugInfo('Auto-play failed, will try on metadata: ' + playError.message);
+            // Continue anyway, we'll try again in the metadata event
+        }
+        
         // Set canvas dimensions to match video
         video.onloadedmetadata = () => {
             // Make canvas match video dimensions exactly
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             updateDebugInfo(`Camera started: ${video.videoWidth}x${video.videoHeight}`);
+            
+            // Try playing again after metadata is loaded (important for iOS)
+            if (video.paused) {
+                video.play().catch(e => {
+                    updateDebugInfo('Error playing video after metadata: ' + e.message);
+                });
+            }
         };
         
         // Make sure video is playing (especially important for iOS)
         video.oncanplay = () => {
             if (video.paused) {
                 video.play().catch(e => {
-                    updateDebugInfo('Error playing video: ' + e.message);
+                    updateDebugInfo('Error playing video on canplay: ' + e.message);
                 });
             }
         };
@@ -121,6 +153,9 @@ async function startCamera() {
         console.error('Error accessing camera:', error);
         updateDebugInfo('Camera error: ' + error.message);
         alert('Could not access the camera. Please allow camera access and try again.');
+        
+        // Re-enable start button
+        startCameraButton.disabled = false;
     }
 }
 
