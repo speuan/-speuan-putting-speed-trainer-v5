@@ -9,7 +9,11 @@ const ASSETS_TO_CACHE = [
   '/manifest.json',
   '/src/css/styles.css',
   '/src/js/app.js',
-  '/src/js/camera.js'
+  '/src/js/camera.js',
+  '/src/js/detection.js',
+  'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js',
+  '/my_model_web_model/model.json'
+  // Model shards will be cached by TensorFlow.js
 ];
 
 // Install event - cache assets

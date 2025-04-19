@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="src/css/styles.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#3498db">
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
 </head>
 <body>
     <header>
@@ -20,12 +22,16 @@
             <div class="controls">
                 <button id="start-camera">Start Camera</button>
                 <button id="capture-frame" disabled>Capture</button>
+                <button id="detect-objects" disabled>Detect Objects</button>
                 <button id="stop-camera" disabled>Stop Camera</button>
             </div>
         </div>
         
         <div class="results-container hidden">
             <h2>Results</h2>
+            <div id="detection-results">
+                <p>Detection status: <span id="detection-status">Not started</span></p>
+            </div>
             <div id="speed-results">
                 <p>Ball speed: <span id="ball-speed">0</span> m/s</p>
             </div>
@@ -37,6 +43,7 @@
     </footer>
 
     <script src="src/js/app.js"></script>
+    <script src="src/js/detection.js"></script>
     <script src="src/js/camera.js"></script>
     <script>
         // Register service worker
