@@ -5,7 +5,7 @@
 // Model reference
 let model = null;
 let isModelLoading = false;
-let labels = ['ball_golf', 'Coin']; // Labels for our detection classes
+let labels = ['ball_golf']; // Labels for our detection classes
 const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
 
 // iOS detection
@@ -195,7 +195,7 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
             
             // The model might return a single tensor (YOLOv8 format) or an array of tensors
             if (predictions instanceof tf.Tensor) {
-                // This is a YOLOv8 format output with shape [1,5,8400]
+                // Log the tensor shape for debugging
                 updateDebugInfo(`Single tensor output detected with shape: ${predictions.shape}`);
                 
                 const detections = await predictions.arraySync();
@@ -209,49 +209,85 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                     return [];
                 }
                 
-                // Based on the log, the tensor shape is [1,5,8400] for YOLOv8 output
-                // Interpret this format correctly:
-                // - First dimension is batch (1)
-                // - 5 rows of data
-                // - 8400 potential detections
-                // First 4 rows are x, y, w, h coordinates, last row is class scores
+                // Process the output tensor based on YOLOv8 format
                 const parsedDetections = [];
                 
                 // Get the data from first batch
                 const batch = detections[0];
                 
-                // For shape [1,5,8400], we need to:
-                // 1. Transpose to treat each column as a detection
-                // 2. Process each of the 8400 potential detections
-                const numDetections = batch[0].length; // Should be 8400
+                // Determine format based on second dimension (number of rows)
+                const numRows = batch.length;
+                updateDebugInfo(`Tensor has ${numRows} rows in second dimension`);
                 
-                updateDebugInfo(`Processing ${numDetections} potential detections`);
-                
-                // For each potential detection (column in the tensor)
-                for (let i = 0; i < numDetections; i++) {
-                    // Get coordinates: x, y, width, height
-                    const x = batch[0][i];
-                    const y = batch[1][i];
-                    const width = batch[2][i];
-                    const height = batch[3][i];
+                if (numRows === 5) {
+                    // Format [1,5,8400] - simplified detection format with:
+                    // - x, y, width, height in first 4 rows
+                    // - objectness/confidence in 5th row
                     
-                    // Get class/confidence information
-                    const classConf = batch[4][i];
+                    // For shape [1,5,8400], treat each column as a detection
+                    const numDetections = batch[0].length; // Should be 8400
                     
-                    // Only process if confidence is reasonable
-                    if (classConf > threshold) {
-                        // Ultralytic YOLOv8 outputs direct class rather than class scores array
-                        // Class index is already determined 
-                        const classIndex = 0; // In our model, we only have one class (ball_golf)
+                    updateDebugInfo(`Processing ${numDetections} potential detections`);
+                    
+                    // For each potential detection (column in the tensor)
+                    for (let i = 0; i < numDetections; i++) {
+                        // Get coordinates: x, y, width, height
+                        const x = batch[0][i];
+                        const y = batch[1][i];
+                        const width = batch[2][i];
+                        const height = batch[3][i];
                         
+                        // Get confidence score (objectness)
+                        const confidence = batch[4][i];
+                        
+                        // Only process if confidence is reasonable
+                        if (confidence > threshold) {
+                            // Add detection with class 'ball_golf' (index 0)
+                            parsedDetections.push({
+                                class: labels[0],
+                                score: confidence,
+                                box: [x, y, width, height]
+                            });
+                            
+                            updateDebugInfo(`Detection ${i}: class=${labels[0]}, score=${Math.round(confidence*100)}%, box=[${x.toFixed(2)}, ${y.toFixed(2)}, ${width.toFixed(2)}, ${height.toFixed(2)}]`);
+                        }
+                    }
+                } else if (numRows > 5) {
+                    // Format likely [1,85,8400] for YOLOv8 with 80 classes
+                    // - x, y, width, height in first 4 rows
+                    // - objectness in 5th row
+                    // - class scores in remaining rows
+                    
+                    const numDetections = batch[0].length;
+                    
+                    updateDebugInfo(`Processing ${numDetections} potential detections with ${numRows - 5} possible classes`);
+                    
+                    // For each potential detection (column in the tensor)
+                    for (let i = 0; i < numDetections; i++) {
+                        // Get coordinates: x, y, width, height
+                        const x = batch[0][i];
+                        const y = batch[1][i];
+                        const width = batch[2][i];
+                        const height = batch[3][i];
+                        
+                        // Get objectness score
+                        const objectness = batch[4][i];
+                        
+                        // Skip if objectness is too low
+                        if (objectness < threshold) continue;
+                        
+                        // We know from metadata.yaml that our only class is 'ball_golf' at index 0
+                        // No need to check other class scores - if objectness is high enough, it's a ball
                         parsedDetections.push({
-                            class: labels[classIndex],
-                            score: classConf,
+                            class: labels[0],
+                            score: objectness, // Use objectness as the score
                             box: [x, y, width, height]
                         });
                         
-                        updateDebugInfo(`Detection ${i}: class=${labels[classIndex]}, score=${Math.round(classConf*100)}%, box=[${x.toFixed(2)}, ${y.toFixed(2)}, ${width.toFixed(2)}, ${height.toFixed(2)}]`);
+                        updateDebugInfo(`Detection ${i}: class=${labels[0]}, score=${Math.round(objectness*100)}%, box=[${x.toFixed(2)}, ${y.toFixed(2)}, ${width.toFixed(2)}, ${height.toFixed(2)}]`);
                     }
+                } else {
+                    updateDebugInfo(`Unexpected tensor format with ${numRows} rows`);
                 }
                 
                 // Clean up tensor
