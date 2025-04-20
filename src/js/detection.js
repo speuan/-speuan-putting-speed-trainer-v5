@@ -198,13 +198,29 @@ function validatePredictions(predictions) {
             // Check class indices are within our label range
             if (i === 5) { // Class array
                 let minClass = Infinity, maxClass = -Infinity;
+                const classCounts = {};
+                
                 for (let j = 0; j < Math.min(1000, arr.length); j++) {
                     const classIdx = Math.round(arr[j]);
                     if (classIdx < minClass) minClass = classIdx;
                     if (classIdx > maxClass) maxClass = classIdx;
+                    
+                    // Count occurrences of each class
+                    classCounts[classIdx] = (classCounts[classIdx] || 0) + 1;
                 }
                 
                 updateDebugInfo(`Class index range: ${minClass} to ${maxClass}, available labels: ${labels.length}`);
+                
+                // Log most frequent classes
+                const sortedClasses = Object.entries(classCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5);
+                    
+                if (sortedClasses.length > 0) {
+                    updateDebugInfo(`Most frequent classes: ${
+                        sortedClasses.map(([cls, count]) => `${cls}(${count})`).join(', ')
+                    }`);
+                }
                 
                 if (minClass < 0 || maxClass >= labels.length) {
                     updateDebugInfo(`Validation warning: Class indices outside valid range: ${minClass} to ${maxClass}, should be 0 to ${labels.length - 1}`);
@@ -440,6 +456,15 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
                 updateDebugInfo(`Normalizing confidence values (max found: ${maxConfidence.toFixed(2)})`);
                 confidences = confidences.map(conf => conf / 100.0);
             }
+            
+            // Log a sample of the raw class indices for diagnosis
+            if (classIndices && classIndices.length > 0) {
+                // Calculate max, min, and unique values from first 20 indices
+                const sampleIndices = classIndices.slice(0, 20).map(idx => Math.round(idx));
+                const uniqueIndices = [...new Set(sampleIndices)].sort((a, b) => a - b);
+                updateDebugInfo(`Class indices sample: ${sampleIndices.join(', ')}`);
+                updateDebugInfo(`Unique class indices: ${uniqueIndices.join(', ')}`);
+            }
         } else if (Array.isArray(predictions) && predictions.length === 1 && Array.isArray(predictions[0])) {
             // Combined array format - each row contains a full detection
             updateDebugInfo('Processing combined format from single tensor output');
@@ -509,15 +534,20 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
             const confidence = confidences[i];
             const classIdx = Math.round(classIndices[i]);
             
-            // Map potentially large class indices to valid range using modulo
-            const validClassIdx = labels.length > 0 ? classIdx % labels.length : 0;
-            
-            // Log all detections with moderate confidence for debugging
-            const className = labels[validClassIdx] || `class_${classIdx}`;
-            
-            // Log original and mapped indices for debugging
-            if (classIdx !== validClassIdx) {
-                updateDebugInfo(`Mapped class index ${classIdx} to ${validClassIdx} (${className})`);
+            // Handle class index more robustly
+            let className;
+            if (classIdx >= 0 && classIdx < labels.length) {
+                // Valid class index within our labels array
+                className = labels[classIdx];
+            } else {
+                // Out of range class index
+                // Log the index once per session to avoid spamming the log
+                const logKey = `logged_class_${classIdx}`;
+                if (!window[logKey]) {
+                    updateDebugInfo(`Unknown class index: ${classIdx} (outside valid range 0-${labels.length-1})`);
+                    window[logKey] = true;
+                }
+                className = `unknown_${classIdx}`;
             }
             
             // Track statistics for each class
