@@ -159,6 +159,21 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
         try {
             predictions = await model.executeAsync(imgTensor);
             updateDebugInfo('Model execution complete');
+            
+            // Log what predictions actually is
+            updateDebugInfo(`Predictions type: ${typeof predictions}`);
+            if (predictions === null) {
+                updateDebugInfo('Predictions is null');
+            } else if (predictions === undefined) {
+                updateDebugInfo('Predictions is undefined');
+            } else if (Array.isArray(predictions)) {
+                updateDebugInfo(`Predictions is an array of length ${predictions.length}`);
+            } else if (predictions instanceof tf.Tensor) {
+                updateDebugInfo(`Predictions is a single tensor with shape ${predictions.shape}`);
+            } else {
+                updateDebugInfo(`Predictions is: ${JSON.stringify(predictions)}`);
+            }
+            
         } catch (inferenceError) {
             updateDebugInfo('Error during inference: ' + inferenceError.message);
             throw inferenceError;
@@ -170,55 +185,174 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
         try {
             // Process results 
             updateDebugInfo('Processing detection results');
-            // Check if predictions is an array with at least 3 elements
-            if (!Array.isArray(predictions) || predictions.length < 3) {
-                throw new Error(`Expected predictions array with at least 3 elements, got: ${predictions?.length || 'undefined'}`);
+            
+            // Handle different formats of model outputs
+            let boxes, scores, classes;
+            
+            if (!predictions) {
+                throw new Error('No predictions returned from model');
             }
             
-            // Check if each prediction tensor exists before calling arraySync
-            if (!predictions[0]) {
-                throw new Error('Boxes tensor (predictions[0]) is undefined');
+            // The model might return a single tensor (YOLOv8 format) or an array of tensors
+            if (predictions instanceof tf.Tensor) {
+                // This is likely a YOLOv8 format output with shape [batch, num_detections, coordinates+score+classes]
+                updateDebugInfo(`Single tensor output detected with shape: ${predictions.shape}`);
+                
+                const detections = await predictions.arraySync();
+                updateDebugInfo(`Detections array: ${detections ? 'exists' : 'is null/undefined'}`);
+                
+                if (!detections || !detections[0] || detections[0].length === 0) {
+                    updateDebugInfo('No valid detections found in tensor');
+                    // Clean up tensor
+                    predictions.dispose();
+                    // Return empty array since no detections found
+                    return [];
+                }
+                
+                // YOLOv8 format - parsing detections
+                // Format is typically [x, y, width, height, confidence, class1_score, class2_score, ...]
+                // We need to convert this format to boxes, scores, classes 
+                const parsedDetections = [];
+                
+                // Process the output tensor
+                for (let i = 0; i < detections[0].length; i++) {
+                    const detection = detections[0][i];
+                    // First 4 elements are typically the box coordinates
+                    const box = detection.slice(0, 4);
+                    // 5th element is typically the confidence score
+                    const score = detection[4];
+                    // Find the index of max value in the remaining elements (class scores)
+                    const classScores = detection.slice(5);
+                    const classIndex = classScores.indexOf(Math.max(...classScores));
+                    
+                    // Only add if confidence is reasonable
+                    if (score > 0.1) { // Low threshold for debugging
+                        parsedDetections.push({
+                            class: labels[classIndex] || `Class ${classIndex}`,
+                            score: score,
+                            box: box
+                        });
+                    }
+                }
+                
+                // Clean up tensor
+                predictions.dispose();
+                
+                // Display results from the parsed detections
+                updateDebugInfo(`Parsed ${parsedDetections.length} detections from single tensor`);
+                
+                // Draw detections if any found
+                const ctx = canvas.getContext('2d');
+                if (parsedDetections.length > 0) {
+                    // Draw boxes on canvas
+                    for (const detection of parsedDetections) {
+                        const [x, y, width, height] = detection.box;
+                        
+                        // Scale to canvas
+                        const boxX = x * canvas.width;
+                        const boxY = y * canvas.height;
+                        const boxWidth = width * canvas.width;
+                        const boxHeight = height * canvas.height;
+                        
+                        // Draw box
+                        ctx.strokeStyle = detection.class === 'ball_golf' ? '#FF0000' : '#00FF00';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.rect(boxX, boxY, boxWidth, boxHeight);
+                        ctx.stroke();
+                        
+                        // Draw label
+                        const label = `${detection.class}: ${Math.round(detection.score * 100)}%`;
+                        ctx.fillStyle = detection.class === 'ball_golf' ? '#FF0000' : '#00FF00';
+                        ctx.fillRect(boxX, boxY, ctx.measureText(label).width + 10, 20);
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.font = '16px Arial';
+                        ctx.fillText(label, boxX + 5, boxY + 15);
+                    }
+                }
+                
+                // Return the detections
+                return parsedDetections;
+            } 
+            else if (Array.isArray(predictions)) {
+                // Original format expected by our code
+                updateDebugInfo(`Array of tensors detected with length: ${predictions.length}`);
+                
+                if (predictions.length < 3) {
+                    updateDebugInfo(`Warning: Expected at least 3 tensors, got ${predictions.length}`);
+                    // We might need to handle this differently depending on the model
+                    
+                    // Log available tensors for debugging
+                    predictions.forEach((tensor, i) => {
+                        if (tensor) {
+                            updateDebugInfo(`Tensor ${i} shape: ${tensor.shape}`);
+                        } else {
+                            updateDebugInfo(`Tensor ${i} is null/undefined`);
+                        }
+                    });
+                    
+                    // Clean up any tensors
+                    predictions.forEach(tensor => {
+                        if (tensor) tensor.dispose();
+                    });
+                    
+                    // Return empty array since we can't process this format
+                    return [];
+                }
+                
+                // We have the expected 3+ tensors
+                boxes = await predictions[0].arraySync();
+                scores = await predictions[1].arraySync();
+                classes = await predictions[2].arraySync();
+                
+                // Clean up result tensors
+                predictions.forEach(tensor => tensor.dispose());
+                
+                // Report highest confidence scores for debugging
+                const highestScores = [];
+                for (let i = 0; i < Math.min(scores[0].length, 5); i++) {
+                    highestScores.push({
+                        class: labels[classes[0][i]],
+                        score: scores[0][i]
+                    });
+                }
+                updateDebugInfo('Top detections: ' + JSON.stringify(highestScores));
+                
+                // Draw results on canvas
+                drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold, originalWidth, originalHeight);
+                
+                // Return detected objects for further processing
+                return processDetections(boxes[0], scores[0], classes[0], threshold);
             }
-            
-            if (!predictions[1]) {
-                throw new Error('Scores tensor (predictions[1]) is undefined');
+            else {
+                // Unknown format
+                updateDebugInfo(`Unexpected prediction format: ${typeof predictions}`);
+                
+                // Try to safely dispose of whatever predictions is
+                if (predictions && typeof predictions.dispose === 'function') {
+                    predictions.dispose();
+                }
+                
+                // Return empty array since we can't process this format
+                return [];
             }
-            
-            if (!predictions[2]) {
-                throw new Error('Classes tensor (predictions[2]) is undefined');
-            }
-            
-            // Log the structure of the predictions for debugging
-            updateDebugInfo(`Predictions array length: ${predictions.length}`);
-            predictions.forEach((tensor, i) => {
-                updateDebugInfo(`Prediction[${i}] shape: ${tensor ? tensor.shape : 'undefined'}`);
-            });
-            
-            const boxes = await predictions[0].arraySync();
-            const scores = await predictions[1].arraySync();
-            const classes = await predictions[2].arraySync();
-            
-            // Clean up result tensors
-            predictions.forEach(tensor => tensor.dispose());
-            
-            // Report highest confidence scores for debugging
-            const highestScores = [];
-            for (let i = 0; i < Math.min(scores[0].length, 5); i++) {
-                highestScores.push({
-                    class: labels[classes[0][i]],
-                    score: scores[0][i]
-                });
-            }
-            updateDebugInfo('Top detections: ' + JSON.stringify(highestScores));
-            
-            // Draw results on canvas
-            drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold, originalWidth, originalHeight);
-            
-            // Return detected objects for further processing
-            return processDetections(boxes[0], scores[0], classes[0], threshold);
         } catch (processError) {
             updateDebugInfo('Error processing results: ' + processError.message);
             console.error('Error processing results:', processError);
+            
+            // Try to safely dispose of predictions if it exists
+            if (predictions) {
+                if (Array.isArray(predictions)) {
+                    predictions.forEach(tensor => {
+                        if (tensor && typeof tensor.dispose === 'function') {
+                            tensor.dispose();
+                        }
+                    });
+                } else if (predictions && typeof predictions.dispose === 'function') {
+                    predictions.dispose();
+                }
+            }
+            
             throw processError;
         }
     } catch (error) {
