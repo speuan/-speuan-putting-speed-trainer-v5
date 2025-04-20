@@ -130,6 +130,7 @@ async function enumerateCameras() {
             .then(stream => {
                 // Stop the stream immediately
                 stream.getTracks().forEach(track => track.stop());
+                updateDebugInfo('Got temporary camera access for enumeration');
             })
             .catch(err => {
                 updateDebugInfo('Permission for camera access denied: ' + err.message);
@@ -144,43 +145,51 @@ async function enumerateCameras() {
         
         updateDebugInfo(`Found ${availableCameras.length} camera(s)`);
         
-        // If we have a camera select dropdown and multiple cameras
-        if (cameraSelect && availableCameras.length > 1) {
+        // Log all camera details for debugging
+        availableCameras.forEach((camera, index) => {
+            updateDebugInfo(`Camera ${index + 1}: ${camera.label || 'unnamed'}, ID: ${camera.deviceId.substring(0, 8)}...`);
+        });
+        
+        // Always show camera select if we have a dropdown, even with just one camera
+        if (cameraSelect) {
             // Clear existing options except the default
-            while (cameraSelect.options.length > 1) {
-                cameraSelect.remove(1);
+            while (cameraSelect.options.length > 0) {
+                cameraSelect.remove(0);
             }
             
-            // Add cameras to dropdown
+            // Add a default option
+            const defaultOption = document.createElement('option');
+            defaultOption.value = "";
+            defaultOption.text = "Default (Back) Camera";
+            cameraSelect.appendChild(defaultOption);
+            
+            // Add a front camera option regardless of enumeration
+            const frontOption = document.createElement('option');
+            frontOption.value = "front";
+            frontOption.text = "Front Camera";
+            cameraSelect.appendChild(frontOption);
+            
+            // Add a back camera option regardless of enumeration
+            const backOption = document.createElement('option');
+            backOption.value = "back";
+            backOption.text = "Back Camera";
+            cameraSelect.appendChild(backOption);
+            
+            // Add all enumerated cameras as well
             availableCameras.forEach((camera, index) => {
-                const option = document.createElement('option');
-                option.value = camera.deviceId;
-                // Use label if available, otherwise use a generic name
-                option.text = camera.label || `Camera ${index + 1}`;
-                cameraSelect.appendChild(option);
+                if (camera.label) {  // Only add if we have a label
+                    const option = document.createElement('option');
+                    option.value = camera.deviceId;
+                    option.text = camera.label || `Camera ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                }
             });
             
-            // Show the select element
+            // Always show the select element
             cameraSelect.style.display = 'block';
             
-            // Pre-select the back camera if this is a mobile device
-            if (isIOS || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-                const backCameraKeywords = ['back', 'rear', 'environment', '1'];
-                // Try to find a back camera option
-                for (let i = 0; i < cameraSelect.options.length; i++) {
-                    const option = cameraSelect.options[i];
-                    const optionText = option.text.toLowerCase();
-                    if (backCameraKeywords.some(keyword => optionText.includes(keyword))) {
-                        cameraSelect.selectedIndex = i;
-                        break;
-                    }
-                }
-            }
-        } else {
-            // Hide the select if there's only one camera
-            if (cameraSelect) {
-                cameraSelect.style.display = 'none';
-            }
+            // Default to back camera (which is our second device-specific option)
+            cameraSelect.selectedIndex = 2;  // Back camera option
         }
     } catch (error) {
         updateDebugInfo('Error enumerating cameras: ' + error.message);
@@ -208,55 +217,75 @@ async function startCamera() {
             stopCamera();
         }
         
-        // Get selected camera ID if available
-        const selectedCameraId = cameraSelect && cameraSelect.value ? cameraSelect.value : '';
+        // Get selected camera option
+        const selectedOption = cameraSelect ? cameraSelect.value : '';
+        updateDebugInfo(`Selected camera option: ${selectedOption}`);
         
-        // Request camera access with preferred settings
-        // Special handling for iOS
-        const constraints = {
+        // Set up constraints based on selection
+        let constraints = {
             audio: false,
-            video: {
-                width: { ideal: isIOS ? 640 : 1280 },
-                height: { ideal: isIOS ? 480 : 720 },
-                facingMode: selectedCameraId ? undefined : 'environment', // Use back camera by default
-                deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined
-            }
+            video: {}
         };
         
-        // Log which camera we're trying to use
-        if (selectedCameraId) {
-            updateDebugInfo(`Trying to use camera with ID: ${selectedCameraId}`);
-        } else {
-            updateDebugInfo('Trying to use default environment-facing camera');
+        // Handle different selection types
+        if (selectedOption === 'front') {
+            // Explicitly request front camera
+            constraints.video.facingMode = 'user';
+            updateDebugInfo('Using front camera by facingMode: user');
+        } 
+        else if (selectedOption === 'back') {
+            // Explicitly request back camera
+            constraints.video.facingMode = 'environment';
+            updateDebugInfo('Using back camera by facingMode: environment');
         }
+        else if (selectedOption) {
+            // Using specific device ID
+            constraints.video.deviceId = { exact: selectedOption };
+            updateDebugInfo(`Using specific camera ID: ${selectedOption.substring(0,8)}...`);
+        }
+        else {
+            // Default to back camera
+            constraints.video.facingMode = 'environment';
+            updateDebugInfo('Using default back camera (environment facing)');
+        }
+        
+        // Add resolution preferences
+        constraints.video.width = { ideal: isIOS ? 640 : 1280 };
+        constraints.video.height = { ideal: isIOS ? 480 : 720 };
         
         updateDebugInfo('Requesting camera with constraints: ' + JSON.stringify(constraints));
         
         try {
-            // iOS Safari requires user interaction before getUserMedia
+            // Request camera access
             stream = await navigator.mediaDevices.getUserMedia(constraints);
-            updateDebugInfo('Camera access granted with standard constraints');
+            updateDebugInfo('Camera access granted with specified constraints');
+            
+            // Log which track we got
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) {
+                updateDebugInfo(`Using camera: ${videoTrack.label}`);
+            }
         } catch (permissionError) {
             updateDebugInfo('Camera error: ' + permissionError.name + ': ' + permissionError.message);
             
             // Try with simpler constraints if the first attempt failed
-            if (permissionError.name === 'OverconstrainedError' || 
-                permissionError.name === 'ConstraintNotSatisfiedError' || 
-                permissionError.name === 'NotReadableError') {
+            updateDebugInfo('Trying with minimal constraints');
+            try {
+                // Default to environment facing if available
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true,
+                    audio: false
+                });
+                updateDebugInfo('Camera access granted with minimal constraints');
                 
-                updateDebugInfo('Trying with simpler constraints');
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true,
-                        audio: false
-                    });
-                    updateDebugInfo('Camera access granted with simplified constraints');
-                } catch (simpleError) {
-                    updateDebugInfo('Simple constraints also failed: ' + simpleError.message);
-                    throw simpleError;
+                // Log which camera we actually got
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) {
+                    updateDebugInfo(`Fallback camera: ${videoTrack.label}`);
                 }
-            } else {
-                throw permissionError; // Re-throw if it's not a constraints issue
+            } catch (simpleError) {
+                updateDebugInfo('Simple constraints also failed: ' + simpleError.message);
+                throw simpleError;
             }
         }
         

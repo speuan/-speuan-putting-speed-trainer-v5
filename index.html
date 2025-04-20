@@ -67,11 +67,14 @@
                 <button id="capture-frame" disabled>Capture</button>
                 <button id="detect-objects" disabled>Detect Objects</button>
                 <button id="stop-camera" disabled>Stop Camera</button>
-                <select id="camera-select" style="display: none; margin-top: 0.5rem; padding: 0.5rem; width: 100%;">
-                    <option value="">Default camera</option>
-                </select>
             </div>
             <div class="controls" style="margin-top: 0.5rem;">
+                <label for="camera-select" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Select Camera:</label>
+                <select id="camera-select" style="display: block; margin-bottom: 0.5rem; padding: 0.5rem; width: 100%; font-size: 16px; border: 2px solid #3498db; border-radius: 4px;">
+                    <option value="">Default (Back) Camera</option>
+                    <option value="front">Front Camera</option>
+                    <option value="back">Back Camera</option>
+                </select>
                 <button id="test-camera" onclick="testCameraAccess()" style="background-color: #e74c3c;">Test Camera Access</button>
                 <button onclick="manualInitialize()" style="background-color: #2ecc71;">Manual Initialize</button>
             </div>
@@ -356,21 +359,50 @@
             // Disable start button
             startBtn.disabled = true;
             
-            // Get selected camera ID if available
-            const selectedCameraId = cameraSelect && cameraSelect.value ? cameraSelect.value : '';
+            // Get selected camera option
+            const selectedOption = cameraSelect ? cameraSelect.value : '';
+            window.updateDebugInfo(`INLINE: Selected camera option: ${selectedOption}`);
             
-            // Request camera constraints based on selection
-            const constraints = {
+            // Set up constraints based on selection
+            let constraints = {
                 audio: false,
-                video: selectedCameraId 
-                    ? { deviceId: { exact: selectedCameraId } } 
-                    : { facingMode: 'environment' } // Use back camera by default
+                video: {}
             };
+            
+            // Handle different selection types
+            if (selectedOption === 'front') {
+                // Explicitly request front camera
+                constraints.video.facingMode = 'user';
+                window.updateDebugInfo('INLINE: Using front camera');
+            } 
+            else if (selectedOption === 'back') {
+                // Explicitly request back camera
+                constraints.video.facingMode = 'environment';
+                window.updateDebugInfo('INLINE: Using back camera');
+            }
+            else if (selectedOption) {
+                // Using specific device ID
+                constraints.video.deviceId = { exact: selectedOption };
+                window.updateDebugInfo(`INLINE: Using specific camera ID: ${selectedOption.substring(0,8)}...`);
+            }
+            else {
+                // Default to back camera
+                constraints.video.facingMode = 'environment';
+                window.updateDebugInfo('INLINE: Using default back camera');
+            }
+            
+            window.updateDebugInfo('INLINE: Camera constraints: ' + JSON.stringify(constraints));
             
             // Request camera
             navigator.mediaDevices.getUserMedia(constraints)
             .then(function(stream) {
                 window.updateDebugInfo('INLINE: Camera started successfully');
+                
+                // Log which camera we got
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) {
+                    window.updateDebugInfo(`INLINE: Using camera: ${videoTrack.label}`);
+                }
                 
                 // Store stream
                 window.cameraStream = stream;
@@ -394,8 +426,46 @@
             })
             .catch(function(err) {
                 window.updateDebugInfo('INLINE: Camera error: ' + err.message);
-                startBtn.disabled = false;
-                alert("Camera error: " + err.message);
+                
+                // Try with minimal constraints
+                window.updateDebugInfo('INLINE: Trying with minimal constraints');
+                navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: false
+                })
+                .then(function(stream) {
+                    window.updateDebugInfo('INLINE: Camera started with minimal constraints');
+                    
+                    // Log which camera we got
+                    const videoTrack = stream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        window.updateDebugInfo(`INLINE: Using fallback camera: ${videoTrack.label}`);
+                    }
+                    
+                    // Store stream
+                    window.cameraStream = stream;
+                    
+                    // Connect to video
+                    video.srcObject = stream;
+                    video.setAttribute('playsinline', true);
+                    video.muted = true;
+                    
+                    // Play video
+                    video.play().then(() => {
+                        window.updateDebugInfo('INLINE: Video playing');
+                    }).catch(e => {
+                        window.updateDebugInfo('INLINE: Play error: ' + e.message);
+                    });
+                    
+                    // Enable buttons
+                    stopBtn.disabled = false;
+                    captureBtn.disabled = false;
+                })
+                .catch(function(fallbackErr) {
+                    window.updateDebugInfo('INLINE: Fallback camera error: ' + fallbackErr.message);
+                    startBtn.disabled = false;
+                    alert("Camera error: " + fallbackErr.message);
+                });
             });
         };
         
@@ -577,15 +647,10 @@
             // Get camera selector
             const cameraSelect = document.getElementById('camera-select');
             
-            // Check if mediaDevices API is available
-            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-                window.updateDebugInfo('INLINE: Media devices API not available');
-                return;
-            }
-            
             // Add event listener for camera switching
             if (cameraSelect) {
                 cameraSelect.addEventListener('change', () => {
+                    window.updateDebugInfo('INLINE: Camera selection changed to: ' + cameraSelect.value);
                     if (window.cameraStream) {
                         // If camera is active, restart it with new device
                         window.stopCamera();
@@ -593,75 +658,6 @@
                     }
                 });
             }
-            
-            // Function to enumerate cameras
-            async function enumerateCameras() {
-                try {
-                    // Request permission first to get access to device labels
-                    try {
-                        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                        // Stop the stream immediately
-                        tempStream.getTracks().forEach(track => track.stop());
-                    } catch (err) {
-                        window.updateDebugInfo('INLINE: Permission for camera access denied: ' + err.message);
-                        return;
-                    }
-                    
-                    // Now enumerate devices
-                    const devices = await navigator.mediaDevices.enumerateDevices();
-                    
-                    // Filter to get only video input devices (cameras)
-                    const cameras = devices.filter(device => device.kind === 'videoinput');
-                    
-                    window.updateDebugInfo(`INLINE: Found ${cameras.length} camera(s)`);
-                    
-                    // If we have a camera select dropdown and multiple cameras
-                    if (cameraSelect && cameras.length > 1) {
-                        // Clear existing options except the default
-                        while (cameraSelect.options.length > 1) {
-                            cameraSelect.remove(1);
-                        }
-                        
-                        // Add cameras to dropdown
-                        cameras.forEach((camera, index) => {
-                            const option = document.createElement('option');
-                            option.value = camera.deviceId;
-                            // Use label if available, otherwise use a generic name
-                            option.text = camera.label || `Camera ${index + 1}`;
-                            cameraSelect.appendChild(option);
-                        });
-                        
-                        // Show the select element
-                        cameraSelect.style.display = 'block';
-                        
-                        // Pre-select the back camera if this is a mobile device
-                        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                        if (isIOS || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-                            const backCameraKeywords = ['back', 'rear', 'environment', '1'];
-                            // Try to find a back camera option
-                            for (let i = 0; i < cameraSelect.options.length; i++) {
-                                const option = cameraSelect.options[i];
-                                const optionText = option.text.toLowerCase();
-                                if (backCameraKeywords.some(keyword => optionText.includes(keyword))) {
-                                    cameraSelect.selectedIndex = i;
-                                    break;
-                                }
-                            }
-                        }
-                    } else {
-                        // Hide the select if there's only one camera
-                        if (cameraSelect) {
-                            cameraSelect.style.display = 'none';
-                        }
-                    }
-                } catch (error) {
-                    window.updateDebugInfo('INLINE: Error enumerating cameras: ' + error.message);
-                    console.error('Error enumerating cameras:', error);
-                }
-            }
-            
-            // Execute camera enumeration
-            enumerateCameras();
         });
     </script>
 </body>
