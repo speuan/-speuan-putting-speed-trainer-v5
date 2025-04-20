@@ -342,12 +342,16 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 // Display results from the parsed detections
                 updateDebugInfo(`Parsed ${parsedDetections.length} detections from single tensor`);
                 
+                // Apply Non-Maximum Suppression to remove overlapping boxes
+                const finalDetections = applyNMS(parsedDetections, 0.3); // Lower IoU threshold (0.3) to be more aggressive with suppression
+                updateDebugInfo(`After NMS: ${finalDetections.length} unique detections remain`);
+                
                 // Draw detections if any found
-                if (parsedDetections.length > 0) {
-                    updateDebugInfo(`Drawing ${parsedDetections.length} bounding boxes on canvas`);
+                if (finalDetections.length > 0) {
+                    updateDebugInfo(`Drawing ${finalDetections.length} bounding boxes on canvas`);
                     
                     // Draw boxes on canvas
-                    for (const detection of parsedDetections) {
+                    for (const detection of finalDetections) {
                         const [x, y, width, height] = detection.box;
                         
                         // YOLOv8 outputs normalized coordinates [0-1]
@@ -381,8 +385,8 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                     }
                 }
                 
-                // Return the detections
-                return parsedDetections;
+                // Return the deduplicated detections
+                return finalDetections;
             } 
             else if (Array.isArray(predictions)) {
                 // Original format expected by our code
@@ -547,6 +551,85 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
             ctx.fillText(label, boxX + 5, boxY);
         }
     }
+}
+
+/**
+ * Calculate Intersection over Union (IoU) between two bounding boxes
+ * @param {Array} box1 - First box [x, y, width, height]
+ * @param {Array} box2 - Second box [x, y, width, height]
+ * @returns {number} IoU value between 0 and 1
+ */
+function calculateIoU(box1, box2) {
+    // Convert [x, y, width, height] to [x1, y1, x2, y2] format
+    const [x1, y1, w1, h1] = box1;
+    const [x2, y2, w2, h2] = box2;
+    
+    const box1X2 = x1 + w1;
+    const box1Y2 = y1 + h1;
+    const box2X2 = x2 + w2;
+    const box2Y2 = y2 + h2;
+    
+    // Calculate intersection area
+    const intersectX1 = Math.max(x1, x2);
+    const intersectY1 = Math.max(y1, y2);
+    const intersectX2 = Math.min(box1X2, box2X2);
+    const intersectY2 = Math.min(box1Y2, box2Y2);
+    
+    // Return 0 if there's no intersection
+    if (intersectX2 - intersectX1 < 0 || intersectY2 - intersectY1 < 0) {
+        return 0;
+    }
+    
+    const intersectionArea = (intersectX2 - intersectX1) * (intersectY2 - intersectY1);
+    const box1Area = w1 * h1;
+    const box2Area = w2 * h2;
+    
+    // Calculate Union area
+    const unionArea = box1Area + box2Area - intersectionArea;
+    
+    // Return IoU
+    return intersectionArea / unionArea;
+}
+
+/**
+ * Apply Non-Maximum Suppression to remove overlapping boxes
+ * @param {Array} detections - Array of detection objects with box and score properties
+ * @param {number} iouThreshold - IoU threshold for suppression (default 0.5)
+ * @returns {Array} Filtered array of detections
+ */
+function applyNMS(detections, iouThreshold = 0.5) {
+    if (detections.length === 0) return [];
+    
+    // Sort detections by confidence score (descending)
+    const sortedDetections = [...detections].sort((a, b) => b.score - a.score);
+    const selectedDetections = [];
+    
+    updateDebugInfo(`Applying NMS on ${sortedDetections.length} detections (IoU threshold: ${iouThreshold})`);
+    
+    // Continue until we've processed all detections
+    while (sortedDetections.length > 0) {
+        // Select the detection with highest confidence
+        const bestDetection = sortedDetections.shift();
+        selectedDetections.push(bestDetection);
+        
+        // Filter out detections that overlap significantly with the selected one
+        let i = 0;
+        while (i < sortedDetections.length) {
+            const iou = calculateIoU(bestDetection.box, sortedDetections[i].box);
+            
+            if (iou > iouThreshold) {
+                // Remove this detection as it overlaps with our best detection
+                updateDebugInfo(`Removing overlapping detection (IoU: ${iou.toFixed(2)})`);
+                sortedDetections.splice(i, 1);
+            } else {
+                // Keep this detection and check the next one
+                i++;
+            }
+        }
+    }
+    
+    updateDebugInfo(`NMS complete: ${detections.length} detections → ${selectedDetections.length} after NMS`);
+    return selectedDetections;
 }
 
 // Export functions for use in other modules
