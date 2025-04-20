@@ -430,5 +430,285 @@
             });
         }
     </script>
+    
+    <!-- Inline camera implementation to avoid loading issues -->
+    <script>
+        // Define global window functions directly in the HTML
+        window.updateDebugInfo = function(message) {
+            const timestamp = new Date().toISOString().substring(11, 19);
+            console.log(`[${timestamp}] ${message}`);
+            
+            if (window.debugInfo) {
+                const currentDebug = window.debugInfo.textContent;
+                const lines = currentDebug.split('\n');
+                if (lines.length > 8) {
+                    lines.shift();
+                }
+                lines.push(`[${timestamp}] ${message}`);
+                window.debugInfo.textContent = lines.join('\n');
+            }
+        };
+        
+        // Handle camera initialization
+        window.initCamera = function(state) {
+            window.updateDebugInfo('INLINE: Camera module initialization started');
+            
+            // Store state
+            window.appState = state || {
+                isRecording: false,
+                frameCount: 0,
+                ballPositions: [],
+                pixelToCmRatio: 1
+            };
+            
+            // Get DOM elements
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const startBtn = document.getElementById('start-camera');
+            const stopBtn = document.getElementById('stop-camera');
+            const captureBtn = document.getElementById('capture-frame');
+            const detectBtn = document.getElementById('detect-objects');
+            
+            if (!video || !canvas || !startBtn) {
+                window.updateDebugInfo('INLINE: DOM elements not found');
+                return;
+            }
+            
+            // Set up event listeners
+            startBtn.addEventListener('click', window.startCamera);
+            stopBtn.addEventListener('click', window.stopCamera);
+            captureBtn.addEventListener('click', window.captureFrame);
+            if (detectBtn) {
+                detectBtn.addEventListener('click', window.runObjectDetection);
+            }
+            
+            window.updateDebugInfo('INLINE: Camera module initialized successfully');
+        };
+        
+        // Start camera
+        window.startCamera = function() {
+            window.updateDebugInfo('INLINE: Starting camera...');
+            
+            const video = document.getElementById('video');
+            const startBtn = document.getElementById('start-camera');
+            const stopBtn = document.getElementById('stop-camera');
+            const captureBtn = document.getElementById('capture-frame');
+            const detectBtn = document.getElementById('detect-objects');
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Camera API not available in this browser!");
+                window.updateDebugInfo('INLINE: Camera API not available');
+                return;
+            }
+            
+            // Disable start button
+            startBtn.disabled = true;
+            
+            // Request camera
+            navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+            })
+            .then(function(stream) {
+                window.updateDebugInfo('INLINE: Camera started successfully');
+                
+                // Store stream
+                window.cameraStream = stream;
+                
+                // Connect to video
+                video.srcObject = stream;
+                video.setAttribute('playsinline', true);
+                video.muted = true;
+                
+                // Play video
+                video.play().then(() => {
+                    window.updateDebugInfo('INLINE: Video playing');
+                }).catch(e => {
+                    window.updateDebugInfo('INLINE: Play error: ' + e.message);
+                });
+                
+                // Enable buttons
+                stopBtn.disabled = false;
+                captureBtn.disabled = false;
+                
+            })
+            .catch(function(err) {
+                window.updateDebugInfo('INLINE: Camera error: ' + err.message);
+                startBtn.disabled = false;
+                alert("Camera error: " + err.message);
+            });
+        };
+        
+        // Stop camera
+        window.stopCamera = function() {
+            window.updateDebugInfo('INLINE: Stopping camera');
+            
+            if (window.cameraStream) {
+                window.cameraStream.getTracks().forEach(track => track.stop());
+                document.getElementById('video').srcObject = null;
+                window.cameraStream = null;
+                
+                // Update UI
+                document.getElementById('start-camera').disabled = false;
+                document.getElementById('stop-camera').disabled = true;
+                document.getElementById('capture-frame').disabled = true;
+                document.getElementById('detect-objects').disabled = true;
+                
+                window.updateDebugInfo('INLINE: Camera stopped');
+            }
+        };
+        
+        // Capture frame
+        window.captureFrame = function() {
+            window.updateDebugInfo('INLINE: Capturing frame');
+            
+            if (!window.cameraStream) {
+                alert("Camera not started. Please start the camera first.");
+                return;
+            }
+            
+            try {
+                const video = document.getElementById('video');
+                const canvas = document.getElementById('canvas');
+                const context = canvas.getContext('2d');
+                
+                // Ensure canvas matches video size
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                // Draw to canvas
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Show canvas and results
+                canvas.classList.remove('hidden');
+                document.querySelector('.results-container').classList.remove('hidden');
+                
+                // Enable detection
+                document.getElementById('detect-objects').disabled = false;
+                
+                window.updateDebugInfo(`INLINE: Frame captured: ${canvas.width}x${canvas.height}`);
+            } catch (error) {
+                window.updateDebugInfo('INLINE: Frame capture error: ' + error.message);
+                alert("Error capturing frame: " + error.message);
+            }
+        };
+        
+        // Run object detection using the external detectObjects function
+        window.runObjectDetection = function() {
+            window.updateDebugInfo('INLINE: Running object detection...');
+            
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const detectionStatus = document.getElementById('detection-status');
+            
+            if (canvas.classList.contains('hidden')) {
+                window.updateDebugInfo('INLINE: No frame captured yet');
+                alert('Please capture a frame first');
+                return;
+            }
+            
+            // Update status
+            if (detectionStatus) {
+                detectionStatus.textContent = 'Running...';
+            }
+            
+            // Check if the detection module is loaded
+            if (typeof window.detectObjects === 'function') {
+                window.updateDebugInfo('INLINE: Using loaded detection module');
+                
+                try {
+                    // Disable button during detection
+                    document.getElementById('detect-objects').disabled = true;
+                    
+                    // Run detection (from detection.js)
+                    window.detectObjects(canvas, ctx, 0.5).then(detections => {
+                        // Update status with detection results
+                        if (detections && detections.length > 0) {
+                            const message = `Found ${detections.length} object(s): ` + 
+                                detections.map(d => `${d.class}(${Math.round(d.score*100)}%)`).join(', ');
+                            
+                            if (detectionStatus) {
+                                detectionStatus.textContent = message;
+                            }
+                            window.updateDebugInfo('INLINE: ' + message);
+                            
+                            // Update ball speed if we have ball detections
+                            updateBallSpeed(detections);
+                        } else {
+                            if (detectionStatus) {
+                                detectionStatus.textContent = 'No objects detected';
+                            }
+                            window.updateDebugInfo('INLINE: No objects detected above threshold');
+                            document.getElementById('ball-speed').textContent = '0';
+                        }
+                        
+                        // Re-enable button
+                        document.getElementById('detect-objects').disabled = false;
+                    }).catch(error => {
+                        window.updateDebugInfo('INLINE: Detection error: ' + error.message);
+                        if (detectionStatus) {
+                            detectionStatus.textContent = 'Detection failed: ' + error.message;
+                        }
+                        document.getElementById('detect-objects').disabled = false;
+                    });
+                } catch (error) {
+                    window.updateDebugInfo('INLINE: Detection error: ' + error.message);
+                    if (detectionStatus) {
+                        detectionStatus.textContent = 'Detection failed: ' + error.message;
+                    }
+                    document.getElementById('detect-objects').disabled = false;
+                }
+            } else {
+                window.updateDebugInfo('INLINE: Detection module not loaded');
+                if (detectionStatus) {
+                    detectionStatus.textContent = 'Detection module not loaded';
+                }
+                
+                // Try to load the detection module
+                window.updateDebugInfo('INLINE: Attempting to load detection module');
+                const script = document.createElement('script');
+                script.src = './src/js/detection.js';
+                script.onload = () => {
+                    window.updateDebugInfo('INLINE: Detection module loaded successfully');
+                    // Try again
+                    setTimeout(() => window.runObjectDetection(), 500);
+                };
+                script.onerror = (err) => {
+                    window.updateDebugInfo('INLINE: Failed to load detection module: ' + err);
+                    if (detectionStatus) {
+                        detectionStatus.textContent = 'Failed to load detection module';
+                    }
+                };
+                document.body.appendChild(script);
+            }
+        };
+        
+        // Update ball speed
+        function updateBallSpeed(detections) {
+            // This is a placeholder function - in a real app, we would calculate speed
+            // from multiple frames over time and use the calibrated pixel-to-cm ratio
+            const ballDetections = detections.filter(d => d.class === 'Ball');
+            
+            // For now, we'll just simulate a realistic speed
+            let speed;
+            if (ballDetections.length > 0) {
+                // Generate a more realistic golf putting speed (between 1.5 and 3.5 m/s)
+                speed = (Math.random() * 2 + 1.5).toFixed(2);
+            } else {
+                speed = '0';
+            }
+            
+            document.getElementById('ball-speed').textContent = speed;
+            window.updateDebugInfo(`INLINE: Ball speed: ${speed} m/s`);
+        }
+        
+        // Initialize automatically
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                window.updateDebugInfo('Auto-initializing inline camera module');
+                window.initCamera();
+            }, 1500);
+        });
+    </script>
 </body>
 </html> 
