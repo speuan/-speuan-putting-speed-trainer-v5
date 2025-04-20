@@ -231,6 +231,40 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 const numRows = batch.length;
                 updateDebugInfo(`Tensor has ${numRows} rows in second dimension`);
                 
+                // Find the range of coordinate values to determine if they're normalized
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                let minW = Infinity, maxW = -Infinity;
+                let minH = Infinity, maxH = -Infinity;
+                
+                // Sample some values to determine range
+                const sampleSize = Math.min(100, batch[0].length);
+                for (let i = 0; i < sampleSize; i++) {
+                    minX = Math.min(minX, batch[0][i]);
+                    maxX = Math.max(maxX, batch[0][i]);
+                    minY = Math.min(minY, batch[1][i]);
+                    maxY = Math.max(maxY, batch[1][i]);
+                    minW = Math.min(minW, batch[2][i]);
+                    maxW = Math.max(maxW, batch[2][i]);
+                    minH = Math.min(minH, batch[3][i]);
+                    maxH = Math.max(maxH, batch[3][i]);
+                }
+                
+                updateDebugInfo(`Coordinate ranges: x=[${minX.toFixed(1)}, ${maxX.toFixed(1)}], y=[${minY.toFixed(1)}, ${maxY.toFixed(1)}], w=[${minW.toFixed(1)}, ${maxW.toFixed(1)}], h=[${minH.toFixed(1)}, ${maxH.toFixed(1)}]`);
+                
+                // Determine if coordinates are already normalized [0-1] or need normalization
+                const needsNormalization = maxX > 1 || maxY > 1;
+                updateDebugInfo(`Normalization needed: ${needsNormalization}`);
+                
+                // Function to handle coordinate scaling
+                const scaleCoordinate = (value, dimension) => {
+                    if (needsNormalization) {
+                        // If coordinates are in model input space (0-640), normalize to [0-1]
+                        return value / MODEL_INPUT_SIZE;
+                    }
+                    return value; // Already normalized
+                };
+                
                 if (numRows === 5) {
                     // Format [1,5,8400] - simplified detection format with:
                     // - x, y, width, height in first 4 rows
@@ -244,10 +278,10 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                     // For each potential detection (column in the tensor)
                     for (let i = 0; i < numDetections; i++) {
                         // Get coordinates: x, y, width, height
-                        const x = batch[0][i];
-                        const y = batch[1][i];
-                        const width = batch[2][i];
-                        const height = batch[3][i];
+                        const x = scaleCoordinate(batch[0][i], 'width');
+                        const y = scaleCoordinate(batch[1][i], 'height');
+                        const width = scaleCoordinate(batch[2][i], 'width');
+                        const height = scaleCoordinate(batch[3][i], 'height');
                         
                         // Get confidence score (objectness)
                         const confidence = batch[4][i];
@@ -277,10 +311,10 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                     // For each potential detection (column in the tensor)
                     for (let i = 0; i < numDetections; i++) {
                         // Get coordinates: x, y, width, height
-                        const x = batch[0][i];
-                        const y = batch[1][i];
-                        const width = batch[2][i];
-                        const height = batch[3][i];
+                        const x = scaleCoordinate(batch[0][i], 'width');
+                        const y = scaleCoordinate(batch[1][i], 'height');
+                        const width = scaleCoordinate(batch[2][i], 'width');
+                        const height = scaleCoordinate(batch[3][i], 'height');
                         
                         // Get objectness score
                         const objectness = batch[4][i];
@@ -318,12 +352,12 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                         
                         // YOLOv8 outputs normalized coordinates [0-1]
                         // Scale them to the actual canvas size
-                        const boxX = x * canvas.width;
-                        const boxY = y * canvas.height;
-                        const boxWidth = width * canvas.width;
-                        const boxHeight = height * canvas.height;
+                        const boxX = x * originalWidth;
+                        const boxY = y * originalHeight;
+                        const boxWidth = width * originalWidth;
+                        const boxHeight = height * originalHeight;
                         
-                        updateDebugInfo(`Drawing box at (${boxX.toFixed(0)},${boxY.toFixed(0)}) with size ${boxWidth.toFixed(0)}x${boxHeight.toFixed(0)}`);
+                        updateDebugInfo(`Drawing box at (${boxX.toFixed(1)},${boxY.toFixed(1)}) with size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
                         
                         // Make the box more visible
                         ctx.strokeStyle = '#FF0000'; // Red color for golf ball
