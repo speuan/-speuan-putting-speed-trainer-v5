@@ -195,13 +195,13 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
             
             // The model might return a single tensor (YOLOv8 format) or an array of tensors
             if (predictions instanceof tf.Tensor) {
-                // This is likely a YOLOv8 format output with shape [batch, num_detections, coordinates+score+classes]
+                // This is a YOLOv8 format output with shape [1,5,8400]
                 updateDebugInfo(`Single tensor output detected with shape: ${predictions.shape}`);
                 
                 const detections = await predictions.arraySync();
                 updateDebugInfo(`Detections array: ${detections ? 'exists' : 'is null/undefined'}`);
                 
-                if (!detections || !detections[0] || detections[0].length === 0) {
+                if (!detections || detections.length === 0) {
                     updateDebugInfo('No valid detections found in tensor');
                     // Clean up tensor
                     predictions.dispose();
@@ -209,29 +209,48 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                     return [];
                 }
                 
-                // YOLOv8 format - parsing detections
-                // Format is typically [x, y, width, height, confidence, class1_score, class2_score, ...]
-                // We need to convert this format to boxes, scores, classes 
+                // Based on the log, the tensor shape is [1,5,8400] for YOLOv8 output
+                // Interpret this format correctly:
+                // - First dimension is batch (1)
+                // - 5 rows of data
+                // - 8400 potential detections
+                // First 4 rows are x, y, w, h coordinates, last row is class scores
                 const parsedDetections = [];
                 
-                // Process the output tensor
-                for (let i = 0; i < detections[0].length; i++) {
-                    const detection = detections[0][i];
-                    // First 4 elements are typically the box coordinates
-                    const box = detection.slice(0, 4);
-                    // 5th element is typically the confidence score
-                    const score = detection[4];
-                    // Find the index of max value in the remaining elements (class scores)
-                    const classScores = detection.slice(5);
-                    const classIndex = classScores.indexOf(Math.max(...classScores));
+                // Get the data from first batch
+                const batch = detections[0];
+                
+                // For shape [1,5,8400], we need to:
+                // 1. Transpose to treat each column as a detection
+                // 2. Process each of the 8400 potential detections
+                const numDetections = batch[0].length; // Should be 8400
+                
+                updateDebugInfo(`Processing ${numDetections} potential detections`);
+                
+                // For each potential detection (column in the tensor)
+                for (let i = 0; i < numDetections; i++) {
+                    // Get coordinates: x, y, width, height
+                    const x = batch[0][i];
+                    const y = batch[1][i];
+                    const width = batch[2][i];
+                    const height = batch[3][i];
                     
-                    // Only add if confidence is reasonable
-                    if (score > 0.1) { // Low threshold for debugging
+                    // Get class/confidence information
+                    const classConf = batch[4][i];
+                    
+                    // Only process if confidence is reasonable
+                    if (classConf > threshold) {
+                        // Ultralytic YOLOv8 outputs direct class rather than class scores array
+                        // Class index is already determined 
+                        const classIndex = 0; // In our model, we only have one class (ball_golf)
+                        
                         parsedDetections.push({
-                            class: labels[classIndex] || `Class ${classIndex}`,
-                            score: score,
-                            box: box
+                            class: labels[classIndex],
+                            score: classConf,
+                            box: [x, y, width, height]
                         });
+                        
+                        updateDebugInfo(`Detection ${i}: class=${labels[classIndex]}, score=${Math.round(classConf*100)}%, box=[${x.toFixed(2)}, ${y.toFixed(2)}, ${width.toFixed(2)}, ${height.toFixed(2)}]`);
                     }
                 }
                 
@@ -242,7 +261,6 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 updateDebugInfo(`Parsed ${parsedDetections.length} detections from single tensor`);
                 
                 // Draw detections if any found
-                const ctx = canvas.getContext('2d');
                 if (parsedDetections.length > 0) {
                     // Draw boxes on canvas
                     for (const detection of parsedDetections) {
