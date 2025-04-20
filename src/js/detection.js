@@ -433,6 +433,13 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
             updateDebugInfo('Processing standard 6-array YOLO format');
             [xs, ys, ws, hs, confidences, classIndices] = predictions;
             totalDetections = confidences.length;
+            
+            // Normalize confidence values if they're greater than 1.0
+            const maxConfidence = Math.max(...confidences);
+            if (maxConfidence > 1.0) {
+                updateDebugInfo(`Normalizing confidence values (max found: ${maxConfidence.toFixed(2)})`);
+                confidences = confidences.map(conf => conf / 100.0);
+            }
         } else if (Array.isArray(predictions) && predictions.length === 1 && Array.isArray(predictions[0])) {
             // Combined array format - each row contains a full detection
             updateDebugInfo('Processing combined format from single tensor output');
@@ -455,7 +462,13 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
                     ys.push(row[1]);
                     ws.push(row[2]);
                     hs.push(row[3]);
-                    confidences.push(row[4]);
+                    
+                    // Normalize confidence if greater than 1.0
+                    let confidence = row[4];
+                    if (confidence > 1.0) {
+                        confidence = confidence / 100.0;
+                    }
+                    confidences.push(confidence);
                     
                     // Find class with highest probability if we have class probabilities
                     if (row.length > 6) {
