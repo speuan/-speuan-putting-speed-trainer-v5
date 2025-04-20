@@ -100,45 +100,57 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 const tensor = tf.browser.fromPixels(imageData);
                 updateDebugInfo(`Created tensor: ${tensor.shape}`);
                 
-                // Resize to model input dimensions (maintaining aspect ratio)
+                // YOLOv8 requires exact [640,640] input with proper normalization
+                // Most important: preserve aspect ratio and normalize pixel values
+                
+                // Get original dimensions
                 const [height, width] = tensor.shape.slice(0, 2);
+                updateDebugInfo(`Original image dimensions: ${width}x${height}`);
                 
-                // In case of iOS, use a simpler approach to avoid memory issues
-                if (isIOS) {
-                    updateDebugInfo('Using iOS-friendly resize to 640x640');
-                    const resized = tf.image.resizeBilinear(tensor, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
-                    return resized.expandDims(0);
-                }
+                // Normalize pixel values to [0,1]
+                const normalized = tensor.div(255.0);
                 
-                // For other platforms, maintain aspect ratio with padding
-                const scale = MODEL_INPUT_SIZE / Math.max(height, width);
-                const newHeight = Math.round(height * scale);
+                // Calculate scaling to maintain aspect ratio
+                const scale = Math.min(
+                    MODEL_INPUT_SIZE / width,
+                    MODEL_INPUT_SIZE / height
+                );
                 const newWidth = Math.round(width * scale);
+                const newHeight = Math.round(height * scale);
                 
-                updateDebugInfo(`Resizing to ${newWidth}x${newHeight} and padding to ${MODEL_INPUT_SIZE}x${MODEL_INPUT_SIZE}`);
+                updateDebugInfo(`Resizing to ${newWidth}x${newHeight} while maintaining aspect ratio`);
                 
-                // Resize image
-                const resized = tf.image.resizeBilinear(tensor, [newHeight, newWidth]);
+                // Resize the image
+                const resized = tf.image.resizeBilinear(normalized, [newHeight, newWidth]);
                 
-                // Create a black canvas of 640x640
-                const padded = tf.zeros([MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
+                // Create a black canvas (zeros) of MODEL_INPUT_SIZE x MODEL_INPUT_SIZE
+                const background = tf.zeros([MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
                 
-                // Calculate offsets to center the image
-                const yOffset = Math.floor((MODEL_INPUT_SIZE - newHeight) / 2);
-                const xOffset = Math.floor((MODEL_INPUT_SIZE - newWidth) / 2);
+                // Calculate padding to center the image
+                const yPad = Math.floor((MODEL_INPUT_SIZE - newHeight) / 2);
+                const xPad = Math.floor((MODEL_INPUT_SIZE - newWidth) / 2);
                 
-                // Place the resized image in the center using simpler method for iOS
-                return tf.tidy(() => {
-                    const placed = padded.add(tf.pad(
+                updateDebugInfo(`Adding padding: top/bottom=${yPad}, left/right=${xPad}`);
+                
+                // Place the resized image on the canvas
+                // Using slice and concat operations instead of pad for more explicit control
+                const withPadding = tf.tidy(() => {
+                    // Pad the tensor with calculated offsets
+                    return tf.pad(
                         resized,
-                        [[yOffset, MODEL_INPUT_SIZE - newHeight - yOffset], 
-                        [xOffset, MODEL_INPUT_SIZE - newWidth - xOffset], 
-                        [0, 0]]
-                    ));
-                    
-                    // Expand dims to add batch size
-                    return placed.expandDims(0);
+                        [
+                            [yPad, MODEL_INPUT_SIZE - newHeight - yPad], // top, bottom padding
+                            [xPad, MODEL_INPUT_SIZE - newWidth - xPad],  // left, right padding
+                            [0, 0]                                      // no channel padding
+                        ]
+                    );
                 });
+                
+                // Add batch dimension [1, 640, 640, 3]
+                const batched = withPadding.expandDims(0);
+                
+                updateDebugInfo(`Final preprocessed tensor shape: ${batched.shape}`);
+                return batched;
             });
             
             updateDebugInfo(`Final input tensor shape: ${imgTensor.shape}`);
