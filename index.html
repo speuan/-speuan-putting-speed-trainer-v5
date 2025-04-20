@@ -551,7 +551,7 @@
                     document.getElementById('detect-objects').disabled = true;
                     
                     // Run detection (from detection.js)
-                    window.detectObjects(canvas, ctx, 0.3).then(detections => {
+                    window.detectObjects(canvas, ctx, 0.2).then(detections => {
                         // Update status with detection results
                         if (detections && detections.length > 0) {
                             const message = `Found ${detections.length} object(s): ` + 

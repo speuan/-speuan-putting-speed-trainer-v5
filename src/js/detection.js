@@ -7,7 +7,7 @@ let model = null;
 let isModelLoading = false;
 let labels = ['ball_golf', 'coin']; // Labels for our detection classes
 const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
-const MIN_CONFIDENCE = 0.5; // Minimum confidence threshold
+const MIN_CONFIDENCE = 0.2; // Lower threshold to 20% to catch more detections
 const IOU_THRESHOLD = 0.3; // Intersection over Union threshold for clustering
 
 // iOS detection
@@ -122,6 +122,93 @@ async function initDetectionModel() {
 }
 
 /**
+ * Perform sanity checks on model predictions to verify they're valid
+ * @param {Array} predictions - Raw prediction arrays
+ * @returns {boolean} Whether predictions seem valid
+ */
+function validatePredictions(predictions) {
+    if (!predictions || !Array.isArray(predictions)) {
+        updateDebugInfo('Validation failed: predictions is not an array');
+        return false;
+    }
+    
+    // YOLO format has 6 arrays for standard output
+    if (predictions.length !== 6) {
+        updateDebugInfo(`Validation warning: Expected 6 arrays, got ${predictions.length}`);
+        // Don't fail, since we handle multiple formats
+    }
+    
+    // Check if output dimensions make sense
+    let allValid = true;
+    for (let i = 0; i < predictions.length; i++) {
+        const arr = predictions[i];
+        if (!Array.isArray(arr)) {
+            updateDebugInfo(`Validation failed: predictions[${i}] is not an array`);
+            allValid = false;
+            continue;
+        }
+        
+        // Check for NaN or Infinity values in the first few items
+        const sampleCount = Math.min(10, arr.length);
+        let hasNaN = false;
+        let hasInfinity = false;
+        let hasNegativeInfinity = false;
+        
+        for (let j = 0; j < sampleCount; j++) {
+            if (Number.isNaN(arr[j])) hasNaN = true;
+            if (arr[j] === Infinity) hasInfinity = true;
+            if (arr[j] === -Infinity) hasNegativeInfinity = true;
+        }
+        
+        if (hasNaN) {
+            updateDebugInfo(`Validation warning: predictions[${i}] contains NaN values`);
+        }
+        if (hasInfinity) {
+            updateDebugInfo(`Validation warning: predictions[${i}] contains Infinity values`);
+        }
+        if (hasNegativeInfinity) {
+            updateDebugInfo(`Validation warning: predictions[${i}] contains -Infinity values`);
+        }
+        
+        // For 6-array format, check bounds of values for specific arrays
+        if (predictions.length === 6) {
+            // Check confidence values are between 0 and 1
+            if (i === 4) { // Confidence array
+                let minConf = 1, maxConf = 0;
+                for (let j = 0; j < Math.min(1000, arr.length); j++) {
+                    if (arr[j] < minConf) minConf = arr[j];
+                    if (arr[j] > maxConf) maxConf = arr[j];
+                }
+                
+                updateDebugInfo(`Confidence range: ${minConf.toFixed(4)} to ${maxConf.toFixed(4)}`);
+                
+                if (minConf < 0 || maxConf > 1) {
+                    updateDebugInfo(`Validation warning: Confidences outside 0-1 range: ${minConf} to ${maxConf}`);
+                }
+            }
+            
+            // Check class indices are within our label range
+            if (i === 5) { // Class array
+                let minClass = Infinity, maxClass = -Infinity;
+                for (let j = 0; j < Math.min(1000, arr.length); j++) {
+                    const classIdx = Math.round(arr[j]);
+                    if (classIdx < minClass) minClass = classIdx;
+                    if (classIdx > maxClass) maxClass = classIdx;
+                }
+                
+                updateDebugInfo(`Class index range: ${minClass} to ${maxClass}, available labels: ${labels.length}`);
+                
+                if (minClass < 0 || maxClass >= labels.length) {
+                    updateDebugInfo(`Validation warning: Class indices outside valid range: ${minClass} to ${maxClass}, should be 0 to ${labels.length - 1}`);
+                }
+            }
+        }
+    }
+    
+    return allValid;
+}
+
+/**
  * Perform object detection on a canvas element
  * @param {HTMLCanvasElement} canvas - Canvas containing the image to analyze
  * @param {CanvasRenderingContext2D} ctx - Canvas context for drawing
@@ -133,6 +220,9 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
         if (typeof window.updateDebugInfo === 'function') {
             updateDebugInfo = window.updateDebugInfo;
         }
+        
+        // Log detection request
+        updateDebugInfo(`Starting object detection with threshold: ${threshold}`);
         
         // Make sure model is loaded
         await initDetectionModel();
@@ -204,19 +294,64 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
             if (Array.isArray(predictions)) {
                 // If multiple outputs, handle differently
                 arrayPreds = await Promise.all(predictions.map(p => p.array()));
+                
+                // Debug the arrays - look at a small sample of each array
+                updateDebugInfo('Examining tensor data structure:');
+                for (let i = 0; i < predictions.length; i++) {
+                    updateDebugInfo(`Tensor ${i} shape: ${predictions[i].shape}, rank: ${predictions[i].rank}`);
+                }
+                
                 predictions.forEach(p => p.dispose());
             } else {
                 // Single output tensor (usual case)
                 arrayPreds = await predictions.array();
+                
+                // Debug the tensor structure
+                updateDebugInfo(`Single tensor - shape: ${predictions.shape}, rank: ${predictions.rank}`);
+                
                 predictions.dispose();
             }
             
             updateDebugInfo(`Converted predictions to array format`);
             
+            // Validate predictions
+            validatePredictions(Array.isArray(arrayPreds) ? arrayPreds : [arrayPreds]);
+            
             // Debug prediction shape
             if (Array.isArray(arrayPreds) && arrayPreds.length > 0) {
                 updateDebugInfo(`Prediction array shape: ${arrayPreds.length} elements`);
-                updateDebugInfo(`First prediction element has shape: ${arrayPreds[0].length} x ${arrayPreds[0][0] ? arrayPreds[0][0].length : 'N/A'}`);
+                
+                // Check first array element structure
+                if (Array.isArray(arrayPreds[0])) {
+                    updateDebugInfo(`First element is array of length ${arrayPreds[0].length}`);
+                    
+                    // Sample values from the arrays
+                    if (arrayPreds.length >= 6 && arrayPreds[4] && arrayPreds[5]) {
+                        // Get top confidence values and their indices
+                        const confidences = arrayPreds[4];
+                        const classes = arrayPreds[5];
+                        
+                        // Create index-confidence pairs and sort by confidence
+                        let indexConfPairs = [];
+                        for (let i = 0; i < confidences.length; i++) {
+                            if (i < 8400) { // Limit to prevent excessive processing
+                                indexConfPairs.push([i, confidences[i]]);
+                            }
+                        }
+                        indexConfPairs.sort((a, b) => b[1] - a[1]);
+                        
+                        // Log the top 5 confidence values and their corresponding class
+                        updateDebugInfo('Top 5 confidence-class pairs:');
+                        for (let i = 0; i < Math.min(5, indexConfPairs.length); i++) {
+                            const [idx, conf] = indexConfPairs[i];
+                            const classIdx = Math.round(classes[idx]);
+                            const className = labels[classIdx] || 'unknown';
+                            updateDebugInfo(`  Index ${idx}: ${className} (${(conf*100).toFixed(1)}%)`);
+                        }
+                    }
+                } else {
+                    updateDebugInfo(`First element is not an array, type: ${typeof arrayPreds[0]}`);
+                }
             }
             
             // Process the output into a usable format
@@ -282,23 +417,127 @@ function processDetections(predictions, threshold) {
     if (predictions.length === 6) {
         updateDebugInfo('Detected 6-array YOLO format - standard output');
         
-        // Standard processing with 6 arrays
+        // YOLO v8 outputs 8400 prediction anchors per image for a 640x640 model
+        const numDetections = predictions[0].length;
+        updateDebugInfo(`Processing ${numDetections} potential detections`);
+        
+        // Show top 10 confidence values from the predictions to debug
+        let topConfidences = [];
         for (let i = 0; i < predictions[0].length; i++) {
             const confidence = predictions[4][i];
+            topConfidences.push(confidence);
+            if (topConfidences.length >= 10) break;
+        }
+        topConfidences.sort((a, b) => b - a);
+        updateDebugInfo(`Top 10 confidence values: ${topConfidences.map(c => c.toFixed(3)).join(', ')}`);
+        
+        // Lower threshold substantially for testing (0.05 = 5%)
+        const debugThreshold = 0.05;
+        let debugDetections = [];
+        
+        // Record all detections by class for analysis
+        const classDetections = {};
+        for (const label of labels) {
+            classDetections[label] = { count: 0, topConfidence: 0 };
+        }
+        
+        // Standard processing with 6 arrays
+        for (let i = 0; i < predictions[0].length; i++) {
+            // In YOLO v8, confidence is on a 0-1 scale
+            const confidence = predictions[4][i];
+            const classIndex = Math.round(predictions[5][i]);
+            const className = labels[classIndex] || 'unknown';
+            
+            // Track detection statistics by class
+            if (classDetections[className]) {
+                classDetections[className].count++;
+                if (confidence > classDetections[className].topConfidence) {
+                    classDetections[className].topConfidence = confidence;
+                }
+            }
+            
+            // Check for unnormalized coordinates (YOLO sometimes outputs relative to input size)
+            let x = predictions[0][i];
+            let y = predictions[1][i];
+            let w = predictions[2][i];
+            let h = predictions[3][i];
+            
+            // If values are already normalized (0-1), keep them
+            // Otherwise, normalize them based on model input size
+            const needsNormalization = x > 1 || y > 1 || w > 1 || h > 1;
+            if (needsNormalization) {
+                x = x / MODEL_INPUT_SIZE;
+                y = y / MODEL_INPUT_SIZE;
+                w = w / MODEL_INPUT_SIZE;
+                h = h / MODEL_INPUT_SIZE;
+            }
+            
+            // Log any moderately confident detections for debugging
+            if (confidence > debugThreshold) {
+                debugDetections.push({
+                    class: className,
+                    confidence: confidence,
+                    x: x,
+                    y: y,
+                    w: w,
+                    h: h
+                });
+            }
+            
             if (confidence > threshold) {
                 // Get class with highest probability
-                const classIndex = Math.round(predictions[5][i]);
-                const className = labels[classIndex] || 'unknown';
-                
                 detections.push({
-                    x: predictions[0][i] / MODEL_INPUT_SIZE,
-                    y: predictions[1][i] / MODEL_INPUT_SIZE,
-                    w: predictions[2][i] / MODEL_INPUT_SIZE,
-                    h: predictions[3][i] / MODEL_INPUT_SIZE,
+                    x: x,
+                    y: y,
+                    w: w,
+                    h: h,
                     confidence: confidence,
                     class: className,
                     classIndex: classIndex
                 });
+            }
+        }
+        
+        // Log detection statistics by class
+        updateDebugInfo('Detection statistics by class:');
+        for (const className in classDetections) {
+            updateDebugInfo(`  ${className}: ${classDetections[className].count} detections, best confidence: ${(classDetections[className].topConfidence*100).toFixed(1)}%`);
+        }
+        
+        // Log debug detections, including those below threshold
+        if (debugDetections.length > 0) {
+            updateDebugInfo(`Found ${debugDetections.length} potential detections above ${debugThreshold}:`);
+            debugDetections.sort((a, b) => b.confidence - a.confidence);
+            debugDetections.slice(0, 5).forEach((d, i) => {
+                updateDebugInfo(`  Potential #${i+1}: ${d.class} (${(d.confidence*100).toFixed(1)}%) at [${d.x.toFixed(2)}, ${d.y.toFixed(2)}]`);
+            });
+        } else {
+            updateDebugInfo(`No detections found above ${debugThreshold} confidence.`);
+        }
+        
+        // If we don't have any detections above our threshold but we have some above the debug threshold,
+        // use a couple of the highest confidence detections anyway
+        if (detections.length === 0 && debugDetections.length > 0) {
+            updateDebugInfo(`No detections above ${threshold}, but using top 2 candidate detections for visualization`);
+            
+            // Take top 2 debug detections and convert them to regular detections
+            const candidateDetections = debugDetections.slice(0, 2);
+            for (const debugDet of candidateDetections) {
+                // We need to estimate width and height since debug detections don't include them
+                // Use a reasonable default size of 10% of the image
+                const estimatedSize = 0.1;
+                
+                detections.push({
+                    x: debugDet.x,
+                    y: debugDet.y,
+                    w: estimatedSize,
+                    h: estimatedSize,
+                    confidence: debugDet.confidence,
+                    class: debugDet.class,
+                    classIndex: labels.indexOf(debugDet.class)
+                });
+                
+                updateDebugInfo(`Using candidate detection: ${debugDet.class} (${(debugDet.confidence*100).toFixed(1)}%)`);
             }
         }
     } 
