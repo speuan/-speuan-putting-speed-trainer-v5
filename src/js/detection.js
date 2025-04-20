@@ -325,14 +325,39 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
             } else {
                 // Single output tensor case (could be combined outputs in one tensor)
                 arrayPreds = await predictions.array();
-                updateDebugInfo(`Single tensor: Converted to array with shape: [${arrayPreds.length},${arrayPreds[0] ? arrayPreds[0].length : 0}]`);
+                updateDebugInfo(`Single tensor: Converted to array with shape: [${arrayPreds.length},${arrayPreds[0] ? arrayPreds[0].length : 0}]${arrayPreds[0] && arrayPreds[0][0] ? ','+arrayPreds[0][0].length : ''}`);
                 predictions.dispose();
             }
             
             // Step 2: Determine format and convert to standard format if needed
             let standardizedPreds;
             
-            if (Array.isArray(arrayPreds) && arrayPreds.length === 1 && Array.isArray(arrayPreds[0]) && arrayPreds[0].length > 0) {
+            // Handle YOLOv8 transposed format [1,6,8400]
+            if (arrayPreds.length === 1 && 
+                arrayPreds[0].length === 6 && 
+                arrayPreds[0][0].length > 0) {
+                
+                updateDebugInfo(`Detected YOLOv8 transposed format [1,6,8400] with ${arrayPreds[0][0].length} detections`);
+                
+                // This is the YOLOv8 transposed format where we have:
+                // [1, 6, 8400] -> [batch, rows, cols]
+                // rows: 0=x, 1=y, 2=w, 3=h, 4=conf, 5=class
+                // cols: each column is a different detection
+                
+                // Extract the 6 rows (we ignore the batch dimension)
+                const xs = Array.from(arrayPreds[0][0]);
+                const ys = Array.from(arrayPreds[0][1]);
+                const ws = Array.from(arrayPreds[0][2]);
+                const hs = Array.from(arrayPreds[0][3]);
+                const confs = Array.from(arrayPreds[0][4]);
+                const classes = Array.from(arrayPreds[0][5]).map(c => Math.round(c));
+                
+                // Log sample of data for verification
+                updateDebugInfo(`Data samples - x:${xs[0].toFixed(2)}, y:${ys[0].toFixed(2)}, w:${ws[0].toFixed(2)}, h:${hs[0].toFixed(2)}, conf:${confs[0].toFixed(2)}, class:${classes[0]}`);
+                
+                standardizedPreds = [xs, ys, ws, hs, confs, classes];
+                updateDebugInfo(`Converted transposed format to standard 6-array format with ${xs.length} detections`);
+            } else if (Array.isArray(arrayPreds) && arrayPreds.length === 1 && Array.isArray(arrayPreds[0]) && arrayPreds[0].length > 0) {
                 // This is likely the "combined" output format where all detections are in one tensor
                 // Each row is [x, y, w, h, conf, class_0, class_1, ...]
                 updateDebugInfo(`Detected combined detection format with ${arrayPreds[0].length} rows`);
@@ -356,19 +381,30 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
                         xs.push(row[0]); // x center
                         ys.push(row[1]); // y center
                         ws.push(row[2]); // width
-                        hs.push(row[3]); // height
-                        confs.push(row[4]); // confidence
+                        hs.push(row[3]);
                         
-                        // Find class with highest probability
-                        let maxClassIdx = 0;
-                        let maxClassProb = row[5];
-                        for (let c = 6; c < numCols; c++) {
-                            if (row[c] > maxClassProb) {
-                                maxClassProb = row[c];
-                                maxClassIdx = c - 5;
-                            }
+                        // Normalize confidence if greater than 1.0
+                        let confidence = row[4];
+                        if (confidence > 1.0) {
+                            confidence = confidence / 100.0;
                         }
-                        classes.push(maxClassIdx);
+                        confs.push(confidence);
+                        
+                        // Find class with highest probability if we have class probabilities
+                        if (row.length > 6) {
+                            let maxClassIdx = 0;
+                            let maxProb = row[5];
+                            for (let c = 6; c < row.length; c++) {
+                                if (row[c] > maxProb) {
+                                    maxProb = row[c];
+                                    maxClassIdx = c - 5; 
+                                }
+                            }
+                            classes.push(maxClassIdx);
+                        } else {
+                            // If only one class score, use it directly
+                            classes.push(Math.round(row[5]));
+                        }
                     }
                     
                     standardizedPreds = [xs, ys, ws, hs, confs, classes];
