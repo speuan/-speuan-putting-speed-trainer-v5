@@ -8,6 +8,7 @@ let isModelLoading = false;
 let labels = ['ball_golf', 'coin']; // Labels for our detection classes
 const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
 const MIN_CONFIDENCE = 0.2; // Lower threshold to 20% to catch more detections
+const DEBUG_MIN_CONFIDENCE = 0.1; // Lower threshold for debugging output
 const IOU_THRESHOLD = 0.3; // Intersection over Union threshold for clustering
 
 // iOS detection
@@ -88,6 +89,13 @@ async function initDetectionModel() {
         // Log model input/output information
         updateDebugInfo('Model input names: ' + model.inputNodes);
         updateDebugInfo('Model output names: ' + model.outputNodes);
+        
+        if (model.graphModel && model.graphModel.outputs) {
+            updateDebugInfo('Output node details:');
+            for (const outputNode of model.graphModel.outputs) {
+                updateDebugInfo(`  - ${outputNode.name}: shape=${JSON.stringify(outputNode.attrParams?.shape?.value || 'unknown')}`);
+            }
+        }
         
         // Warm up the model with a dummy tensor
         const dummyInput = tf.zeros([1, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
@@ -289,73 +297,82 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
         }
         
         try {
-            // Process results
+            // Step 1: Convert predictions to arrays for processing
             let arrayPreds;
+            
+            // Handle different output formats
             if (Array.isArray(predictions)) {
-                // If multiple outputs, handle differently
+                // Multiple output tensors case (typical YOLO format)
                 arrayPreds = await Promise.all(predictions.map(p => p.array()));
-                
-                // Debug the arrays - look at a small sample of each array
-                updateDebugInfo('Examining tensor data structure:');
-                for (let i = 0; i < predictions.length; i++) {
-                    updateDebugInfo(`Tensor ${i} shape: ${predictions[i].shape}, rank: ${predictions[i].rank}`);
-                }
-                
+                updateDebugInfo(`Multiple tensors: Converted ${predictions.length} tensors to arrays`);
                 predictions.forEach(p => p.dispose());
             } else {
-                // Single output tensor (usual case)
+                // Single output tensor case (could be combined outputs in one tensor)
                 arrayPreds = await predictions.array();
-                
-                // Debug the tensor structure
-                updateDebugInfo(`Single tensor - shape: ${predictions.shape}, rank: ${predictions.rank}`);
-                
+                updateDebugInfo(`Single tensor: Converted to array with shape: [${arrayPreds.length},${arrayPreds[0] ? arrayPreds[0].length : 0}]`);
                 predictions.dispose();
             }
             
-            updateDebugInfo(`Converted predictions to array format`);
+            // Step 2: Determine format and convert to standard format if needed
+            let standardizedPreds;
             
-            // Validate predictions
-            validatePredictions(Array.isArray(arrayPreds) ? arrayPreds : [arrayPreds]);
-            
-            // Debug prediction shape
-            if (Array.isArray(arrayPreds) && arrayPreds.length > 0) {
-                updateDebugInfo(`Prediction array shape: ${arrayPreds.length} elements`);
+            if (Array.isArray(arrayPreds) && arrayPreds.length === 1 && Array.isArray(arrayPreds[0]) && arrayPreds[0].length > 0) {
+                // This is likely the "combined" output format where all detections are in one tensor
+                // Each row is [x, y, w, h, conf, class_0, class_1, ...]
+                updateDebugInfo(`Detected combined detection format with ${arrayPreds[0].length} rows`);
                 
-                // Check first array element structure
-                if (Array.isArray(arrayPreds[0])) {
-                    updateDebugInfo(`First element is array of length ${arrayPreds[0].length}`);
+                // Sample a few rows to inspect
+                updateDebugInfo(`Example row 0: ${arrayPreds[0][0].slice(0, Math.min(10, arrayPreds[0][0].length)).join(', ')}...`);
+                
+                // Convert to standard 6-array format (x,y,w,h,conf,class_idx)
+                const numRows = arrayPreds[0].length;
+                const numCols = arrayPreds[0][0].length;
+                
+                // Process this format - we expect each detection to have:
+                // [x, y, w, h, confidence, class_0_score, class_1_score]
+                // with 7 or more columns
+                if (numCols >= 7) {
+                    // Columns as expected, reshape to standard format
+                    const xs = [], ys = [], ws = [], hs = [], confs = [], classes = [];
                     
-                    // Sample values from the arrays
-                    if (arrayPreds.length >= 6 && arrayPreds[4] && arrayPreds[5]) {
-                        // Get top confidence values and their indices
-                        const confidences = arrayPreds[4];
-                        const classes = arrayPreds[5];
+                    for (let i = 0; i < numRows; i++) {
+                        const row = arrayPreds[0][i];
+                        xs.push(row[0]); // x center
+                        ys.push(row[1]); // y center
+                        ws.push(row[2]); // width
+                        hs.push(row[3]); // height
+                        confs.push(row[4]); // confidence
                         
-                        // Create index-confidence pairs and sort by confidence
-                        let indexConfPairs = [];
-                        for (let i = 0; i < confidences.length; i++) {
-                            if (i < 8400) { // Limit to prevent excessive processing
-                                indexConfPairs.push([i, confidences[i]]);
+                        // Find class with highest probability
+                        let maxClassIdx = 0;
+                        let maxClassProb = row[5];
+                        for (let c = 6; c < numCols; c++) {
+                            if (row[c] > maxClassProb) {
+                                maxClassProb = row[c];
+                                maxClassIdx = c - 5;
                             }
                         }
-                        indexConfPairs.sort((a, b) => b[1] - a[1]);
-                        
-                        // Log the top 5 confidence values and their corresponding class
-                        updateDebugInfo('Top 5 confidence-class pairs:');
-                        for (let i = 0; i < Math.min(5, indexConfPairs.length); i++) {
-                            const [idx, conf] = indexConfPairs[i];
-                            const classIdx = Math.round(classes[idx]);
-                            const className = labels[classIdx] || 'unknown';
-                            updateDebugInfo(`  Index ${idx}: ${className} (${(conf*100).toFixed(1)}%)`);
-                        }
+                        classes.push(maxClassIdx);
                     }
+                    
+                    standardizedPreds = [xs, ys, ws, hs, confs, classes];
+                    updateDebugInfo(`Converted to standard 6-array format with ${numRows} detections`);
                 } else {
-                    updateDebugInfo(`First element is not an array, type: ${typeof arrayPreds[0]}`);
+                    updateDebugInfo(`Unexpected combined format with only ${numCols} columns, treating as raw output`);
+                    standardizedPreds = arrayPreds;
                 }
+            } else if (Array.isArray(arrayPreds) && arrayPreds.length === 6) {
+                // Standard 6-array format, use as is
+                updateDebugInfo(`Using standard 6-array YOLO format`);
+                standardizedPreds = arrayPreds;
+            } else {
+                // Unknown format, log and use as is
+                updateDebugInfo(`Unknown output format, using raw model output`);
+                standardizedPreds = arrayPreds;
             }
             
-            // Process the output into a usable format
-            const detections = processDetections(Array.isArray(arrayPreds) ? arrayPreds[0] : arrayPreds, threshold);
+            // Step 3: Process the standardized predictions into detections
+            const detections = processDetections(standardizedPreds, threshold);
             
             // Only proceed if we have detections
             if (detections && detections.length > 0) {
@@ -392,230 +409,155 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
 }
 
 /**
- * Process raw model output into usable detections
- * @param {Array} predictions - Raw model predictions
- * @param {number} threshold - Confidence threshold
- * @returns {Array} Processed detections
+ * Process raw model output into a usable detection format
+ * @param {Array} predictions - Raw predictions from YOLO model
+ * @param {number} confidenceThreshold - Minimum confidence threshold
+ * @return {Array} Array of detection objects {x,y,w,h,class,confidence}
  */
-function processDetections(predictions, threshold) {
-    updateDebugInfo(`Processing predictions with ${threshold} threshold`);
-    
-    // Log prediction shape for debugging
-    if (!predictions || !Array.isArray(predictions)) {
-        updateDebugInfo('Invalid predictions format: not an array');
-        return null;
-    }
-    
-    updateDebugInfo(`Prediction array length: ${predictions.length}`);
-    
-    // Handle YOLO v8 output format which might vary
-    // Try to determine the format of the predictions
-    
-    let detections = [];
-    
-    // Try the expected format for YOLO v8 (6 arrays: bbox_x, bbox_y, bbox_w, bbox_h, confidence, class)
-    if (predictions.length === 6) {
-        updateDebugInfo('Detected 6-array YOLO format - standard output');
+function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
+    try {
+        updateDebugInfo(`Processing detections with threshold: ${confidenceThreshold}`);
         
-        // YOLO v8 outputs 8400 prediction anchors per image for a 640x640 model
-        const numDetections = predictions[0].length;
-        updateDebugInfo(`Processing ${numDetections} potential detections`);
+        // Detection statistics
+        const detectionStats = {};
+        let totalDetections = 0;
+        let validDetections = 0;
+        let bestConfidence = 0;
         
-        // Show top 10 confidence values from the predictions to debug
-        let topConfidences = [];
-        for (let i = 0; i < predictions[0].length; i++) {
-            const confidence = predictions[4][i];
-            topConfidences.push(confidence);
-            if (topConfidences.length >= 10) break;
-        }
-        topConfidences.sort((a, b) => b - a);
-        updateDebugInfo(`Top 10 confidence values: ${topConfidences.map(c => c.toFixed(3)).join(', ')}`);
+        // Handle different types of input formats
+        let xs, ys, ws, hs, confidences, classIndices;
         
-        // Lower threshold substantially for testing (0.05 = 5%)
-        const debugThreshold = 0.05;
-        let debugDetections = [];
-        
-        // Record all detections by class for analysis
-        const classDetections = {};
-        for (const label of labels) {
-            classDetections[label] = { count: 0, topConfidence: 0 };
-        }
-        
-        // Standard processing with 6 arrays
-        for (let i = 0; i < predictions[0].length; i++) {
-            // In YOLO v8, confidence is on a 0-1 scale
-            const confidence = predictions[4][i];
-            const classIndex = Math.round(predictions[5][i]);
-            const className = labels[classIndex] || 'unknown';
+        // Determine the type of input format
+        if (Array.isArray(predictions) && predictions.length === 6) {
+            // Standard YOLOv8 format: 6 arrays [xs, ys, ws, hs, confidences, classes]
+            updateDebugInfo('Processing standard 6-array YOLO format');
+            [xs, ys, ws, hs, confidences, classIndices] = predictions;
+            totalDetections = confidences.length;
+        } else if (Array.isArray(predictions) && predictions.length === 1 && Array.isArray(predictions[0])) {
+            // Combined array format - each row contains a full detection
+            updateDebugInfo('Processing combined format from single tensor output');
+            xs = [];
+            ys = [];
+            ws = [];
+            hs = [];
+            confidences = [];
+            classIndices = [];
             
-            // Track detection statistics by class
-            if (classDetections[className]) {
-                classDetections[className].count++;
-                if (confidence > classDetections[className].topConfidence) {
-                    classDetections[className].topConfidence = confidence;
-                }
-            }
+            const rows = predictions[0];
+            totalDetections = rows.length;
             
-            // Check for unnormalized coordinates (YOLO sometimes outputs relative to input size)
-            let x = predictions[0][i];
-            let y = predictions[1][i];
-            let w = predictions[2][i];
-            let h = predictions[3][i];
-            
-            // If values are already normalized (0-1), keep them
-            // Otherwise, normalize them based on model input size
-            const needsNormalization = x > 1 || y > 1 || w > 1 || h > 1;
-            if (needsNormalization) {
-                x = x / MODEL_INPUT_SIZE;
-                y = y / MODEL_INPUT_SIZE;
-                w = w / MODEL_INPUT_SIZE;
-                h = h / MODEL_INPUT_SIZE;
-            }
-            
-            // Log any moderately confident detections for debugging
-            if (confidence > debugThreshold) {
-                debugDetections.push({
-                    class: className,
-                    confidence: confidence,
-                    x: x,
-                    y: y,
-                    w: w,
-                    h: h
-                });
-            }
-            
-            if (confidence > threshold) {
-                // Get class with highest probability
-                detections.push({
-                    x: x,
-                    y: y,
-                    w: w,
-                    h: h,
-                    confidence: confidence,
-                    class: className,
-                    classIndex: classIndex
-                });
-            }
-        }
-        
-        // Log detection statistics by class
-        updateDebugInfo('Detection statistics by class:');
-        for (const className in classDetections) {
-            updateDebugInfo(`  ${className}: ${classDetections[className].count} detections, best confidence: ${(classDetections[className].topConfidence*100).toFixed(1)}%`);
-        }
-        
-        // Log debug detections, including those below threshold
-        if (debugDetections.length > 0) {
-            updateDebugInfo(`Found ${debugDetections.length} potential detections above ${debugThreshold}:`);
-            debugDetections.sort((a, b) => b.confidence - a.confidence);
-            debugDetections.slice(0, 5).forEach((d, i) => {
-                updateDebugInfo(`  Potential #${i+1}: ${d.class} (${(d.confidence*100).toFixed(1)}%) at [${d.x.toFixed(2)}, ${d.y.toFixed(2)}]`);
-            });
-        } else {
-            updateDebugInfo(`No detections found above ${debugThreshold} confidence.`);
-        }
-        
-        // If we don't have any detections above our threshold but we have some above the debug threshold,
-        // use a couple of the highest confidence detections anyway
-        if (detections.length === 0 && debugDetections.length > 0) {
-            updateDebugInfo(`No detections above ${threshold}, but using top 2 candidate detections for visualization`);
-            
-            // Take top 2 debug detections and convert them to regular detections
-            const candidateDetections = debugDetections.slice(0, 2);
-            for (const debugDet of candidateDetections) {
-                // We need to estimate width and height since debug detections don't include them
-                // Use a reasonable default size of 10% of the image
-                const estimatedSize = 0.1;
-                
-                detections.push({
-                    x: debugDet.x,
-                    y: debugDet.y,
-                    w: estimatedSize,
-                    h: estimatedSize,
-                    confidence: debugDet.confidence,
-                    class: debugDet.class,
-                    classIndex: labels.indexOf(debugDet.class)
-                });
-                
-                updateDebugInfo(`Using candidate detection: ${debugDet.class} (${(debugDet.confidence*100).toFixed(1)}%)`);
-            }
-        }
-    } 
-    // Try the alternative format where the first dimension is the number of detections
-    else if (predictions.length > 0 && Array.isArray(predictions[0]) && predictions[0].length === 5) {
-        updateDebugInfo('Detected detection-first YOLO format');
-        
-        // Process each detection
-        for (let i = 0; i < predictions.length; i++) {
-            const confidence = predictions[i][4];
-            if (confidence > threshold) {
-                // Default to class 0 (ball_golf) if we don't have class info
-                const className = labels[0] || 'unknown';
-                
-                detections.push({
-                    x: predictions[i][0] / MODEL_INPUT_SIZE,
-                    y: predictions[i][1] / MODEL_INPUT_SIZE,
-                    w: predictions[i][2] / MODEL_INPUT_SIZE,
-                    h: predictions[i][3] / MODEL_INPUT_SIZE,
-                    confidence: confidence,
-                    class: className,
-                    classIndex: 0
-                });
-            }
-        }
-    }
-    // Try the format where the output is a single array with 7 values per detection
-    else if (predictions.length > 0 && Array.isArray(predictions[0]) && predictions[0].length >= 7) {
-        updateDebugInfo('Detected flattened YOLO format (7+ values per detection)');
-        
-        // Process each detection (x, y, w, h, conf, class1_prob, class2_prob, ...)
-        for (let i = 0; i < predictions.length; i++) {
-            const detection = predictions[i];
-            const confidence = detection[4];
-            
-            if (confidence > threshold) {
-                // Find class with highest probability
-                let maxClassProb = 0;
-                let maxClassIdx = 0;
-                for (let c = 5; c < detection.length; c++) {
-                    if (detection[c] > maxClassProb) {
-                        maxClassProb = detection[c];
-                        maxClassIdx = c - 5;
+            // Extract values from each row
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                // Check if row has enough elements for a detection
+                if (row.length >= 6) {
+                    xs.push(row[0]);
+                    ys.push(row[1]);
+                    ws.push(row[2]);
+                    hs.push(row[3]);
+                    confidences.push(row[4]);
+                    
+                    // Find class with highest probability if we have class probabilities
+                    if (row.length > 6) {
+                        let maxClassIdx = 0;
+                        let maxProb = row[5];
+                        for (let c = 6; c < row.length; c++) {
+                            if (row[c] > maxProb) {
+                                maxProb = row[c];
+                                maxClassIdx = c - 5; 
+                            }
+                        }
+                        classIndices.push(maxClassIdx);
+                    } else {
+                        // If only one class score, use it directly
+                        classIndices.push(Math.round(row[5]));
                     }
                 }
-                
-                const className = labels[maxClassIdx] || 'unknown';
-                
+            }
+        } else {
+            // Unknown format - log and return empty array
+            updateDebugInfo(`Unrecognized prediction format. Got: ${typeof predictions}`);
+            if (Array.isArray(predictions)) {
+                updateDebugInfo(`Array of length ${predictions.length}`);
+                if (predictions.length > 0) {
+                    updateDebugInfo(`First element type: ${typeof predictions[0]}`);
+                }
+            }
+            return [];
+        }
+        
+        updateDebugInfo(`Processing ${totalDetections} raw detections`);
+        
+        // Prepare result array
+        const detections = [];
+        
+        // Process each detection
+        for (let i = 0; i < totalDetections; i++) {
+            const confidence = confidences[i];
+            const classIdx = Math.round(classIndices[i]);
+            
+            // Log all detections with moderate confidence for debugging
+            const className = labels[classIdx] || `class_${classIdx}`;
+            
+            // Track statistics for each class
+            if (!detectionStats[className]) {
+                detectionStats[className] = {
+                    count: 0,
+                    bestConfidence: 0
+                };
+            }
+            detectionStats[className].count++;
+            
+            // Track best confidence
+            if (confidence > detectionStats[className].bestConfidence) {
+                detectionStats[className].bestConfidence = confidence;
+            }
+            
+            // Track overall best confidence
+            if (confidence > bestConfidence) {
+                bestConfidence = confidence;
+            }
+            
+            // Skip lower confidence detections early
+            if (confidence < DEBUG_MIN_CONFIDENCE) continue;
+            
+            // Log detections with moderate confidence for debugging
+            if (confidence < confidenceThreshold && confidence >= DEBUG_MIN_CONFIDENCE) {
+                updateDebugInfo(`Low confidence detection: ${className} (${(confidence*100).toFixed(1)}%)`);
+            }
+            
+            // Filter by confidence threshold
+            if (confidence >= confidenceThreshold) {
                 detections.push({
-                    x: detection[0] / MODEL_INPUT_SIZE,
-                    y: detection[1] / MODEL_INPUT_SIZE,
-                    w: detection[2] / MODEL_INPUT_SIZE,
-                    h: detection[3] / MODEL_INPUT_SIZE,
-                    confidence: confidence,
-                    class: className,
-                    classIndex: maxClassIdx
+                    x: xs[i],         // Center X (relative 0-1)
+                    y: ys[i],         // Center Y (relative 0-1)
+                    w: ws[i],         // Width (relative 0-1)
+                    h: hs[i],         // Height (relative 0-1)
+                    class: className, // Class name
+                    confidence: confidence // Confidence score (0-1)
                 });
+                validDetections++;
             }
         }
-    }
-    else {
-        updateDebugInfo(`Unknown prediction format. Expected 6 arrays, got ${predictions.length}`);
+        
+        // Log detection statistics
+        updateDebugInfo(`Detection statistics:`);
+        for (const className in detectionStats) {
+            updateDebugInfo(`  ${className}: ${detectionStats[className].count} detections, best confidence: ${(detectionStats[className].bestConfidence*100).toFixed(1)}%`);
+        }
+        updateDebugInfo(`Total raw detections: ${totalDetections}, valid detections: ${validDetections}`);
+        updateDebugInfo(`Best overall confidence: ${(bestConfidence*100).toFixed(1)}%`);
+        
+        if (detections.length === 0) {
+            updateDebugInfo(`No detections above threshold (${confidenceThreshold*100}%)`);
+        }
+        
+        return detections;
+    } catch (error) {
+        updateDebugInfo(`Error processing detections: ${error.message}`);
+        console.error('Error processing detections:', error);
         return [];
     }
-    
-    if (detections.length === 0) {
-        updateDebugInfo('No detections above threshold');
-        return [];
-    }
-    
-    updateDebugInfo(`Found ${detections.length} detections above threshold`);
-    
-    // Cluster overlapping detections of the same class
-    const clusters = clusterDetections(detections);
-    updateDebugInfo(`After clustering: ${clusters.length} detections`);
-    
-    // Return all clusters
-    return clusters;
 }
 
 /**
