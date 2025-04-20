@@ -509,8 +509,16 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
             const confidence = confidences[i];
             const classIdx = Math.round(classIndices[i]);
             
+            // Map potentially large class indices to valid range using modulo
+            const validClassIdx = labels.length > 0 ? classIdx % labels.length : 0;
+            
             // Log all detections with moderate confidence for debugging
-            const className = labels[classIdx] || `class_${classIdx}`;
+            const className = labels[validClassIdx] || `class_${classIdx}`;
+            
+            // Log original and mapped indices for debugging
+            if (classIdx !== validClassIdx) {
+                updateDebugInfo(`Mapped class index ${classIdx} to ${validClassIdx} (${className})`);
+            }
             
             // Track statistics for each class
             if (!detectionStats[className]) {
