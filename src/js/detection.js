@@ -380,8 +380,8 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                         const unpadHeight = modelHeight / paddingInfo.scale;
                         
                         // Apply a small position adjustment if needed based on testing
-                        const adjustX = 0; // Fine-tune horizontal positioning if needed
-                        const adjustY = 0; // Fine-tune vertical positioning if needed
+                        const adjustX = -3; // Fine-tune horizontal positioning
+                        const adjustY = 2; // Fine-tune vertical positioning
                         
                         // Ensure values are within canvas bounds
                         const boxX = Math.max(0, unpadX + adjustX);
@@ -554,8 +554,8 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
                 const unpadHeight = modelHeight / paddingInfo.scale;
                 
                 // Apply a small position adjustment if needed based on testing
-                const adjustX = 0; // Fine-tune horizontal positioning if needed
-                const adjustY = 0; // Fine-tune vertical positioning if needed
+                const adjustX = -3; // Fine-tune horizontal positioning
+                const adjustY = 2; // Fine-tune vertical positioning
                 
                 // Final coordinates with bounds checking
                 boxX = Math.max(0, unpadX + adjustX);
@@ -686,8 +686,8 @@ function drawPrediction(canvas, ctx, prediction, threshold = 0.5, paddingInfo = 
         const unpadHeight = modelHeight / paddingInfo.scale;
         
         // Apply a small position adjustment if needed based on testing
-        const adjustX = 0; // Fine-tune horizontal positioning if needed
-        const adjustY = 0; // Fine-tune vertical positioning if needed
+        const adjustX = -3; // Fine-tune horizontal positioning
+        const adjustY = 2; // Fine-tune vertical positioning
         
         // Final coordinates
         boxX = Math.max(0, unpadX + adjustX);
