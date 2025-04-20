@@ -372,16 +372,24 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                         
                         // Draw label with confidence
                         const label = `${detection.class}: ${Math.round(detection.score * 100)}%`;
+                        
+                        // Measure text for proper background sizing
+                        ctx.font = 'bold 16px Arial';
                         const textWidth = ctx.measureText(label).width;
+                        const textHeight = 20; // Approximate height of the text
+                        const padding = 4; // Padding around text
+                        
+                        // Position label above the bounding box
+                        const labelX = boxX;
+                        const labelY = Math.max(0, boxY - textHeight - padding * 2);
                         
                         // Background for text
-                        ctx.fillStyle = '#FF0000';
-                        ctx.fillRect(boxX, boxY - 25, textWidth + 10, 25);
+                        ctx.fillStyle = 'rgba(255, 0, 0, 0.8)'; // Semi-transparent red
+                        ctx.fillRect(labelX, labelY, textWidth + padding * 2, textHeight + padding * 2);
                         
                         // Text
                         ctx.fillStyle = '#FFFFFF';
-                        ctx.font = 'bold 16px Arial';
-                        ctx.fillText(label, boxX + 5, boxY - 20);
+                        ctx.fillText(label, labelX + padding, labelY + padding + textHeight/2);
                     }
                 }
                 
@@ -536,19 +544,31 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
             
             // Draw bounding box
             ctx.strokeStyle = color;
+            ctx.lineWidth = 3; // Thicker line
             ctx.beginPath();
             ctx.rect(boxX, boxY, boxWidth, boxHeight);
             ctx.stroke();
             
-            // Draw label background
+            // Draw label with confidence
             const label = `${className}: ${score}%`;
-            const textWidth = ctx.measureText(label).width;
-            ctx.fillStyle = color;
-            ctx.fillRect(boxX, boxY, textWidth + 10, 20);
             
-            // Draw label text
+            // Measure text for proper background sizing
+            ctx.font = 'bold 16px Arial';
+            const textWidth = ctx.measureText(label).width;
+            const textHeight = 20; // Approximate height of the text
+            const padding = 4; // Padding around text
+            
+            // Position label above the bounding box
+            const labelX = boxX;
+            const labelY = Math.max(0, boxY - textHeight - padding * 2);
+            
+            // Background for text
+            ctx.fillStyle = `rgba(${color === '#FF0000' ? '255, 0, 0' : '0, 255, 0'}, 0.8)`;
+            ctx.fillRect(labelX, labelY, textWidth + padding * 2, textHeight + padding * 2);
+            
+            // Text
             ctx.fillStyle = '#FFFFFF';
-            ctx.fillText(label, boxX + 5, boxY);
+            ctx.fillText(label, labelX + padding, labelY + padding + textHeight/2);
         }
     }
 }
