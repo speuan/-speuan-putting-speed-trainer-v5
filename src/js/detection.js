@@ -361,13 +361,17 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                         const boxWidth = width * originalWidth;
                         const boxHeight = height * originalHeight;
                         
-                        updateDebugInfo(`Drawing box at (${boxX.toFixed(1)},${boxY.toFixed(1)}) with size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
+                        // Apply the correction factor based on our debugging
+                        const correctedBoxX = boxX + boxWidth * 2;  // Move right by 2x width
+                        const correctedBoxY = boxY - boxHeight * 0.5;  // Move up by 0.5x height
+                        
+                        updateDebugInfo(`Drawing box at (${correctedBoxX.toFixed(1)},${correctedBoxY.toFixed(1)}) with size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
                         
                         // Make the box more visible
                         ctx.strokeStyle = '#FF0000'; // Red color for golf ball
                         ctx.lineWidth = 3; // Thicker line
                         ctx.beginPath();
-                        ctx.rect(boxX, boxY, boxWidth, boxHeight);
+                        ctx.rect(correctedBoxX, correctedBoxY, boxWidth, boxHeight);
                         ctx.stroke();
                     }
                 }
@@ -503,36 +507,117 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
     // Clear any previous drawings
     ctx.lineWidth = 2;
     
+    // Add debug boxes at corners
+    const boxSize = 20;
+    
+    // Top-left (Red)
+    ctx.strokeStyle = '#FF0000';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.rect(0, 0, boxSize, boxSize);
+    ctx.stroke();
+    
+    // Top-right (Green)
+    ctx.strokeStyle = '#00FF00';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.rect(originalWidth - boxSize, 0, boxSize, boxSize);
+    ctx.stroke();
+    
+    // Bottom-left (Blue)
+    ctx.strokeStyle = '#0000FF';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.rect(0, originalHeight - boxSize, boxSize, boxSize);
+    ctx.stroke();
+    
+    // Bottom-right (Yellow)
+    ctx.strokeStyle = '#FFFF00';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.rect(originalWidth - boxSize, originalHeight - boxSize, boxSize, boxSize);
+    ctx.stroke();
+    
+    // Draw the center of the image
+    ctx.strokeStyle = '#FF00FF'; // Magenta
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.rect(originalWidth/2 - boxSize/2, originalHeight/2 - boxSize/2, boxSize, boxSize);
+    ctx.stroke();
+    
+    // Now draw the actual detection boxes
     for (let i = 0; i < scores.length; i++) {
         if (scores[i] > threshold) {
             // Get box coordinates - note these are normalized [0-1] values
             // Fix the coordinate order - model outputs [y, x, height, width]
             const [y, x, height, width] = boxes[i];
             
-            // Scale to canvas size
-            const boxX = x * originalWidth;
-            const boxY = y * originalHeight;
+            // Try adjusting the coordinates to fix the misplacement
+            // If box is "two of its size to the left and half a box low"
             const boxWidth = width * originalWidth;
             const boxHeight = height * originalHeight;
+            
+            // Original calculation
+            let boxX = x * originalWidth;
+            let boxY = y * originalHeight;
+            
+            // Draw debug info about the box
+            ctx.fillStyle = 'white';
+            ctx.fillRect(10, 10, 250, 80);
+            ctx.fillStyle = 'black';
+            ctx.font = '12px monospace';
+            ctx.fillText(`Original coords: [${x.toFixed(3)}, ${y.toFixed(3)}, ${width.toFixed(3)}, ${height.toFixed(3)}]`, 15, 25);
+            ctx.fillText(`Calculated pos: (${boxX.toFixed(1)}, ${boxY.toFixed(1)})`, 15, 40);
+            ctx.fillText(`Size: ${boxWidth.toFixed(1)} x ${boxHeight.toFixed(1)}`, 15, 55);
+            ctx.fillText(`Canvas: ${originalWidth} x ${originalHeight}`, 15, 70);
             
             // Draw box based on class
             const className = labels[classes[i]];
             const color = className === 'ball_golf' ? '#FF0000' : '#00FF00';
             
-            // Draw bounding box with thicker border for visibility
+            // Draw original bounding box
             ctx.strokeStyle = color;
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.rect(boxX, boxY, boxWidth, boxHeight);
             ctx.stroke();
             
-            // Debug - draw a dot at the top-left corner to verify position
-            ctx.fillStyle = '#FFFF00';
+            // Draw a corrected bounding box with offset (testing the hypothesis)
+            // Apply correction factor: "two of its size to the left and half a box low"
+            const correctedBoxX = boxX + boxWidth * 2;  // Move right by 2x width
+            const correctedBoxY = boxY - boxHeight * 0.5;  // Move up by 0.5x height
+            
+            // Draw the corrected box with dashed lines
+            ctx.strokeStyle = '#00FFFF'; // Cyan
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]); // Dashed line
             ctx.beginPath();
-            ctx.arc(boxX, boxY, 5, 0, 2 * Math.PI);
-            ctx.fill();
+            ctx.rect(correctedBoxX, correctedBoxY, boxWidth, boxHeight);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset to solid line
+            
+            // Highlight the corners of both boxes
+            // Original box corners
+            drawCornerDot(ctx, boxX, boxY, '#FFFF00');
+            drawCornerDot(ctx, boxX + boxWidth, boxY, '#FF00FF');
+            drawCornerDot(ctx, boxX, boxY + boxHeight, '#00FFFF');
+            drawCornerDot(ctx, boxX + boxWidth, boxY + boxHeight, '#FFFFFF');
+            
+            // Corrected box corners
+            drawCornerDot(ctx, correctedBoxX, correctedBoxY, '#FFFF00');
+            drawCornerDot(ctx, correctedBoxX + boxWidth, correctedBoxY, '#FF00FF');
+            drawCornerDot(ctx, correctedBoxX, correctedBoxY + boxHeight, '#00FFFF');
+            drawCornerDot(ctx, correctedBoxX + boxWidth, correctedBoxY + boxHeight, '#FFFFFF');
         }
     }
+}
+
+// Helper function to draw a corner dot
+function drawCornerDot(ctx, x, y, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, 2 * Math.PI);
+    ctx.fill();
 }
 
 /**
@@ -620,6 +705,12 @@ function drawPrediction(canvas, ctx, prediction, threshold = 0.5) {
     const [x, y, width, height] = prediction.bbox;
     const className = prediction.class;
     
+    // Apply the correction factor
+    const boxWidth = width;
+    const boxHeight = height;
+    const correctedX = x + boxWidth * 2;  // Move right by 2x width
+    const correctedY = y - boxHeight * 0.5;  // Move up by 0.5x height
+    
     // Set color based on class
     const color = className === 'ball_golf' ? '#FF0000' : '#00FF00';
     
@@ -627,13 +718,13 @@ function drawPrediction(canvas, ctx, prediction, threshold = 0.5) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.rect(x, y, width, height);
+    ctx.rect(correctedX, correctedY, boxWidth, boxHeight);
     ctx.stroke();
     
     // Debug - draw a dot at the top-left corner to verify position
     ctx.fillStyle = '#FFFF00';
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.arc(correctedX, correctedY, 4, 0, 2 * Math.PI);
     ctx.fill();
 }
 
