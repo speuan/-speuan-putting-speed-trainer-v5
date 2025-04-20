@@ -12,10 +12,10 @@ Create a browser-based (PWA) tool that allows users to analyze the speed and tra
 
 ### Core Features
 - Static camera setup assumed (no camera motion).
-- Golf ball detection via custom trained lightweight model.
+- Golf ball and coin detection via custom trained lightweight model.
 - Use HTML5 video and canvas for frame capture.
 - Real-time ball tracking and motion analysis.
-- Calibrate pixel-to-real-world distance ratio.
+- Calibrate pixel-to-real-world distance ratio using coins laid out in known geometry.
 - PWA capabilities: offline support, mobile-friendly.
 
 ### Future Extensions

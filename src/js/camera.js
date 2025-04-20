@@ -22,6 +22,23 @@ let appState = null;
 // iOS detection
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
+// Log iOS detection result immediately
+if (typeof window.debugInfo !== 'undefined') {
+    const iosMessage = isIOS 
+        ? `Detected iOS device: ${navigator.userAgent}` 
+        : `Not an iOS device: ${navigator.userAgent}`;
+    
+    if (typeof window.updateDebugInfo === 'function') {
+        window.updateDebugInfo(iosMessage);
+    } else {
+        console.log(iosMessage);
+        const timestamp = new Date().toISOString().substring(11, 19);
+        if (window.debugInfo) {
+            window.debugInfo.textContent += `\n[${timestamp}] ${iosMessage}`;
+        }
+    }
+}
+
 /**
  * Initialize camera handling
  * @param {Object} state - Application state object
@@ -30,34 +47,51 @@ function initCamera(state) {
     // Store reference to app state
     appState = state;
     
-    // Get DOM elements
-    video = document.getElementById('video');
-    canvas = document.getElementById('canvas');
-    context = canvas.getContext('2d', { willReadFrequently: true }); // Optimize for iOS
-    startCameraButton = document.getElementById('start-camera');
-    stopCameraButton = document.getElementById('stop-camera');
-    captureFrameButton = document.getElementById('capture-frame');
-    detectObjectsButton = document.getElementById('detect-objects');
-    detectionStatus = document.getElementById('detection-status');
-    debugInfo = document.getElementById('debug-info');
-    
-    // Set up event listeners
-    startCameraButton.addEventListener('click', startCamera);
-    stopCameraButton.addEventListener('click', stopCamera);
-    captureFrameButton.addEventListener('click', captureFrame);
-    detectObjectsButton.addEventListener('click', runObjectDetection);
-    
-    // Add additional debug info
-    updateDebugInfo('Camera module initialized');
-    
-    // Try to initialize detection model in the background
-    if (typeof initDetectionModel === 'function') {
-        updateDebugInfo('Preloading model...');
-        initDetectionModel().then(() => {
-            updateDebugInfo('Model preloaded successfully');
-        }).catch(err => {
-            updateDebugInfo('Model preloading failed: ' + err.message);
-        });
+    try {
+        // Get DOM elements
+        video = document.getElementById('video');
+        canvas = document.getElementById('canvas');
+        context = canvas.getContext('2d', { willReadFrequently: true }); // Optimize for iOS
+        startCameraButton = document.getElementById('start-camera');
+        stopCameraButton = document.getElementById('stop-camera');
+        captureFrameButton = document.getElementById('capture-frame');
+        detectObjectsButton = document.getElementById('detect-objects');
+        detectionStatus = document.getElementById('detection-status');
+        debugInfo = document.getElementById('debug-info');
+        
+        // Verify elements were found
+        if (!video || !canvas || !startCameraButton) {
+            throw new Error('Required DOM elements not found');
+        }
+        
+        // Set up event listeners
+        startCameraButton.addEventListener('click', startCamera);
+        stopCameraButton.addEventListener('click', stopCamera);
+        captureFrameButton.addEventListener('click', captureFrame);
+        detectObjectsButton.addEventListener('click', runObjectDetection);
+        
+        // Add additional debug info
+        updateDebugInfo('Camera module initialized successfully');
+        
+        // Log environment info
+        updateDebugInfo(`Environment: iOS=${isIOS}, screen=${window.innerWidth}x${window.innerHeight}`);
+        
+        // Try to initialize detection model in the background
+        if (typeof initDetectionModel === 'function') {
+            updateDebugInfo('Preloading model...');
+            initDetectionModel().then(() => {
+                updateDebugInfo('Model preloaded successfully');
+            }).catch(err => {
+                updateDebugInfo('Model preloading failed: ' + err.message);
+            });
+        }
+    } catch (error) {
+        console.error('Camera initialization error:', error);
+        if (typeof updateDebugInfo === 'function') {
+            updateDebugInfo('Camera init ERROR: ' + error.message);
+        } else if (window.debugInfo) {
+            window.debugInfo.textContent += '\nCamera init ERROR: ' + error.message;
+        }
     }
 }
 
@@ -344,4 +378,5 @@ function updateDebugInfo(message) {
 
 // Export functions
 window.initCamera = initCamera;
+window.startCamera = startCamera;
 window.updateDebugInfo = updateDebugInfo; 

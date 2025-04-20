@@ -19,6 +19,38 @@
                 window.debugInfo.textContent = `App initialized at: ${new Date().toISOString()}\nUserAgent: ${navigator.userAgent}\nPlatform: ${navigator.platform}`;
             }
         });
+        
+        // Direct camera test function
+        function testCameraAccess() {
+            if (window.debugInfo) {
+                window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] Testing direct camera access...`;
+            }
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Camera API not available in this browser!");
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] Camera API not available!`;
+                }
+                return;
+            }
+            
+            // Request camera with minimal constraints
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    if (window.debugInfo) {
+                        window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] DIRECT TEST: Camera access SUCCESS!`;
+                    }
+                    // Stop the stream immediately
+                    stream.getTracks().forEach(track => track.stop());
+                    alert("Camera test successful! Access granted.");
+                })
+                .catch(function(err) {
+                    if (window.debugInfo) {
+                        window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] DIRECT TEST: Camera error: ${err.name}: ${err.message}`;
+                    }
+                    alert("Camera test failed: " + err.message);
+                });
+        }
     </script>
 </head>
 <body>
@@ -35,6 +67,9 @@
                 <button id="capture-frame" disabled>Capture</button>
                 <button id="detect-objects" disabled>Detect Objects</button>
                 <button id="stop-camera" disabled>Stop Camera</button>
+            </div>
+            <div class="controls" style="margin-top: 0.5rem;">
+                <button id="test-camera" onclick="testCameraAccess()" style="background-color: #e74c3c;">Test Camera Access</button>
             </div>
         </div>
         
