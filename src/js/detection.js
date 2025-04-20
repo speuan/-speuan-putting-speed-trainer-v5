@@ -369,27 +369,6 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                         ctx.beginPath();
                         ctx.rect(boxX, boxY, boxWidth, boxHeight);
                         ctx.stroke();
-                        
-                        // Draw label with confidence
-                        const label = `${detection.class}: ${Math.round(detection.score * 100)}%`;
-                        
-                        // Measure text for proper background sizing
-                        ctx.font = 'bold 16px Arial';
-                        const textWidth = ctx.measureText(label).width;
-                        const textHeight = 20; // Approximate height of the text
-                        const padding = 4; // Padding around text
-                        
-                        // Position label above the bounding box
-                        const labelX = boxX;
-                        const labelY = Math.max(0, boxY - textHeight - padding * 2);
-                        
-                        // Background for text
-                        ctx.fillStyle = 'rgba(255, 0, 0, 0.8)'; // Semi-transparent red
-                        ctx.fillRect(labelX, labelY, textWidth + padding * 2, textHeight + padding * 2);
-                        
-                        // Text
-                        ctx.fillStyle = '#FFFFFF';
-                        ctx.fillText(label, labelX + padding, labelY + padding + textHeight/2);
                     }
                 }
                 
@@ -523,12 +502,11 @@ function processDetections(boxes, scores, classes, threshold) {
 function drawDetections(canvas, ctx, boxes, scores, classes, threshold, originalWidth, originalHeight) {
     // Clear any previous drawings
     ctx.lineWidth = 2;
-    ctx.font = '16px Arial';
-    ctx.textBaseline = 'top';
     
     for (let i = 0; i < scores.length; i++) {
         if (scores[i] > threshold) {
             // Get box coordinates - note these are normalized [0-1] values
+            // Fix the coordinate order - model outputs [y, x, height, width]
             const [y, x, height, width] = boxes[i];
             
             // Scale to canvas size
@@ -539,36 +517,20 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
             
             // Draw box based on class
             const className = labels[classes[i]];
-            const score = Math.round(scores[i] * 100);
             const color = className === 'ball_golf' ? '#FF0000' : '#00FF00';
             
-            // Draw bounding box
+            // Draw bounding box with thicker border for visibility
             ctx.strokeStyle = color;
-            ctx.lineWidth = 3; // Thicker line
+            ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.rect(boxX, boxY, boxWidth, boxHeight);
             ctx.stroke();
             
-            // Draw label with confidence
-            const label = `${className}: ${score}%`;
-            
-            // Measure text for proper background sizing
-            ctx.font = 'bold 16px Arial';
-            const textWidth = ctx.measureText(label).width;
-            const textHeight = 20; // Approximate height of the text
-            const padding = 4; // Padding around text
-            
-            // Position label above the bounding box
-            const labelX = boxX;
-            const labelY = Math.max(0, boxY - textHeight - padding * 2);
-            
-            // Background for text
-            ctx.fillStyle = `rgba(${color === '#FF0000' ? '255, 0, 0' : '0, 255, 0'}, 0.8)`;
-            ctx.fillRect(labelX, labelY, textWidth + padding * 2, textHeight + padding * 2);
-            
-            // Text
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillText(label, labelX + padding, labelY + padding + textHeight/2);
+            // Debug - draw a dot at the top-left corner to verify position
+            ctx.fillStyle = '#FFFF00';
+            ctx.beginPath();
+            ctx.arc(boxX, boxY, 5, 0, 2 * Math.PI);
+            ctx.fill();
         }
     }
 }
@@ -650,6 +612,29 @@ function applyNMS(detections, iouThreshold = 0.5) {
     
     updateDebugInfo(`NMS complete: ${detections.length} detections → ${selectedDetections.length} after NMS`);
     return selectedDetections;
+}
+
+function drawPrediction(canvas, ctx, prediction, threshold = 0.5) {
+    if (!prediction || prediction.score < threshold) return;
+
+    const [x, y, width, height] = prediction.bbox;
+    const className = prediction.class;
+    
+    // Set color based on class
+    const color = className === 'ball_golf' ? '#FF0000' : '#00FF00';
+    
+    // Draw bounding box with thicker border for visibility
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.rect(x, y, width, height);
+    ctx.stroke();
+    
+    // Debug - draw a dot at the top-left corner to verify position
+    ctx.fillStyle = '#FFFF00';
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.fill();
 }
 
 // Export functions for use in other modules
