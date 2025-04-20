@@ -51,6 +51,153 @@
                     alert("Camera test failed: " + err.message);
                 });
         }
+        
+        // Simple direct camera function
+        function simpleStartCamera() {
+            const timestamp = new Date().toISOString().substring(11, 19);
+            if (window.debugInfo) {
+                window.debugInfo.textContent += `\n[${timestamp}] Using SIMPLE camera start...`;
+            }
+            
+            const videoElement = document.getElementById('video');
+            const simpleStartBtn = document.getElementById('simple-start');
+            const simpleStopBtn = document.getElementById('simple-stop');
+            const simpleCaptureBtn = document.getElementById('simple-capture');
+            const startBtn = document.getElementById('start-camera');
+            const stopBtn = document.getElementById('stop-camera');
+            const captureBtn = document.getElementById('capture-frame');
+            const detectBtn = document.getElementById('detect-objects');
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Camera API not available!");
+                return;
+            }
+            
+            // Disable button to prevent double clicks
+            simpleStartBtn.disabled = true;
+            startBtn.disabled = true;
+            
+            // Simple constraints
+            navigator.mediaDevices.getUserMedia({ 
+                video: true,
+                audio: false
+            })
+            .then(function(stream) {
+                // Show success in debug
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] SIMPLE: Camera started successfully`;
+                }
+                
+                // Connect stream to video
+                videoElement.srcObject = stream;
+                
+                // iOS requires both attribute and property
+                videoElement.setAttribute('playsinline', 'true');
+                videoElement.muted = true;
+                
+                // Try to play
+                videoElement.play()
+                    .then(() => {
+                        if (window.debugInfo) {
+                            window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] SIMPLE: Video playing`;
+                        }
+                    })
+                    .catch(e => {
+                        if (window.debugInfo) {
+                            window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] SIMPLE: Play error: ${e.message}`;
+                        }
+                    });
+                
+                // Enable controls
+                simpleStopBtn.disabled = false;
+                simpleCaptureBtn.disabled = false;
+                stopBtn.disabled = false;
+                captureBtn.disabled = false;
+                detectBtn.disabled = false;
+                
+                // Store the stream globally so the stop function can access it
+                window.activeStream = stream;
+            })
+            .catch(function(err) {
+                // Log error
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] SIMPLE: Camera error: ${err.name}: ${err.message}`;
+                }
+                
+                // Re-enable button
+                simpleStartBtn.disabled = false;
+                startBtn.disabled = false;
+                
+                // Alert user
+                alert("Camera error: " + err.message);
+            });
+        }
+        
+        // Simple stop camera
+        function simpleStopCamera() {
+            if (window.activeStream) {
+                window.activeStream.getTracks().forEach(track => track.stop());
+                
+                const videoElement = document.getElementById('video');
+                videoElement.srcObject = null;
+                
+                // Update UI
+                document.getElementById('simple-start').disabled = false;
+                document.getElementById('simple-stop').disabled = true;
+                document.getElementById('simple-capture').disabled = true;
+                document.getElementById('start-camera').disabled = false;
+                document.getElementById('stop-camera').disabled = true;
+                document.getElementById('capture-frame').disabled = true;
+                document.getElementById('detect-objects').disabled = true;
+                
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] SIMPLE: Camera stopped`;
+                }
+                
+                window.activeStream = null;
+            }
+        }
+        
+        // Simple frame capture function
+        function simpleCaptureFrame() {
+            if (!window.activeStream) {
+                alert("Camera not started. Please start the camera first.");
+                return;
+            }
+            
+            const timestamp = new Date().toISOString().substring(11, 19);
+            if (window.debugInfo) {
+                window.debugInfo.textContent += `\n[${timestamp}] Simple capture frame...`;
+            }
+            
+            try {
+                const videoElement = document.getElementById('video');
+                const canvasElement = document.getElementById('canvas');
+                const ctx = canvasElement.getContext('2d');
+                
+                // Make sure canvas is sized correctly
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                
+                // Draw video to canvas
+                ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                
+                // Show canvas
+                canvasElement.classList.remove('hidden');
+                
+                // Show results container
+                document.querySelector('.results-container').classList.remove('hidden');
+                
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${timestamp}] Frame captured: ${canvasElement.width}x${canvasElement.height}`;
+                }
+            } catch (error) {
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${timestamp}] Frame capture error: ${error.message}`;
+                }
+                alert("Error capturing frame: " + error.message);
+            }
+        }
     </script>
 </head>
 <body>
@@ -63,6 +210,11 @@
             <video id="video" playsinline autoplay muted></video>
             <canvas id="canvas" class="hidden"></canvas>
             <div class="controls">
+                <button id="simple-start" onclick="simpleStartCamera()">Start Camera (Simple)</button>
+                <button id="simple-stop" onclick="simpleStopCamera()" disabled>Stop Camera (Simple)</button>
+                <button id="simple-capture" onclick="simpleCaptureFrame()" disabled>Capture (Simple)</button>
+            </div>
+            <div class="controls" style="margin-top: 0.5rem;">
                 <button id="start-camera">Start Camera</button>
                 <button id="capture-frame" disabled>Capture</button>
                 <button id="detect-objects" disabled>Detect Objects</button>
