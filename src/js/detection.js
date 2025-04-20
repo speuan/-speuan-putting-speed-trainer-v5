@@ -93,6 +93,8 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
         
         // Prepare image for the model - resize to 640x640
         let imgTensor;
+        let paddingInfo = {}; // Store padding information for coordinate transformation
+        
         try {
             imgTensor = tf.tidy(() => {
                 // Convert to tensor
@@ -118,6 +120,11 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 const newWidth = Math.round(width * scale);
                 const newHeight = Math.round(height * scale);
                 
+                // Store scale factor for transforming back coordinates
+                paddingInfo.scale = scale;
+                paddingInfo.newWidth = newWidth;
+                paddingInfo.newHeight = newHeight;
+                
                 updateDebugInfo(`Resizing to ${newWidth}x${newHeight} while maintaining aspect ratio`);
                 
                 // Resize the image
@@ -129,6 +136,10 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 // Calculate padding to center the image
                 const yPad = Math.floor((MODEL_INPUT_SIZE - newHeight) / 2);
                 const xPad = Math.floor((MODEL_INPUT_SIZE - newWidth) / 2);
+                
+                // Store padding info for transforming back coordinates
+                paddingInfo.xPad = xPad;
+                paddingInfo.yPad = yPad;
                 
                 updateDebugInfo(`Adding padding: top/bottom=${yPad}, left/right=${xPad}`);
                 
@@ -154,6 +165,7 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
             });
             
             updateDebugInfo(`Final input tensor shape: ${imgTensor.shape}`);
+            updateDebugInfo(`Padding info: scale=${paddingInfo.scale}, xPad=${paddingInfo.xPad}, yPad=${paddingInfo.yPad}`);
         } catch (tensorError) {
             updateDebugInfo('Error creating input tensor: ' + tensorError.message);
             throw tensorError;
@@ -354,24 +366,32 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                     for (const detection of finalDetections) {
                         const [x, y, width, height] = detection.box;
                         
-                        // YOLOv8 outputs normalized coordinates [0-1]
-                        // Scale them to the actual canvas size
-                        const boxX = x * originalWidth;
-                        const boxY = y * originalHeight;
-                        const boxWidth = width * originalWidth;
-                        const boxHeight = height * originalHeight;
+                        // Apply the correct coordinate transformation
+                        // Map from model space (with padding) back to original image space
+                        const modelX = x * MODEL_INPUT_SIZE;
+                        const modelY = y * MODEL_INPUT_SIZE;
+                        const modelWidth = width * MODEL_INPUT_SIZE;
+                        const modelHeight = height * MODEL_INPUT_SIZE;
                         
-                        // Apply the correction factor based on our debugging
-                        const correctedBoxX = boxX + boxWidth * 2;  // Move right by 2x width
-                        const correctedBoxY = boxY - boxHeight * 0.5;  // Move up by 0.5x height
+                        // Subtract padding and adjust for scale
+                        const unpadX = (modelX - paddingInfo.xPad) / paddingInfo.scale;
+                        const unpadY = (modelY - paddingInfo.yPad) / paddingInfo.scale;
+                        const unpadWidth = modelWidth / paddingInfo.scale;
+                        const unpadHeight = modelHeight / paddingInfo.scale;
                         
-                        updateDebugInfo(`Drawing box at (${correctedBoxX.toFixed(1)},${correctedBoxY.toFixed(1)}) with size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
+                        // Ensure values are within canvas bounds
+                        const boxX = Math.max(0, unpadX);
+                        const boxY = Math.max(0, unpadY);
+                        const boxWidth = Math.min(unpadWidth, canvas.width - boxX);
+                        const boxHeight = Math.min(unpadHeight, canvas.height - boxY);
                         
-                        // Make the box more visible
+                        updateDebugInfo(`Drawing box at (${boxX.toFixed(1)},${boxY.toFixed(1)}) with size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
+                        
+                        // Draw the bounding box
                         ctx.strokeStyle = '#FF0000'; // Red color for golf ball
                         ctx.lineWidth = 3; // Thicker line
                         ctx.beginPath();
-                        ctx.rect(correctedBoxX, correctedBoxY, boxWidth, boxHeight);
+                        ctx.rect(boxX, boxY, boxWidth, boxHeight);
                         ctx.stroke();
                     }
                 }
@@ -424,7 +444,7 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 updateDebugInfo('Top detections: ' + JSON.stringify(highestScores));
                 
                 // Draw results on canvas
-                drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold, originalWidth, originalHeight);
+                drawDetections(canvas, ctx, boxes[0], scores[0], classes[0], threshold, originalWidth, originalHeight, paddingInfo);
                 
                 // Return detected objects for further processing
                 return processDetections(boxes[0], scores[0], classes[0], threshold);
@@ -502,8 +522,9 @@ function processDetections(boxes, scores, classes, threshold) {
  * @param {number} threshold - Confidence threshold
  * @param {number} originalWidth - Original canvas width
  * @param {number} originalHeight - Original canvas height
+ * @param {Object} paddingInfo - Padding information for coordinate transformation
  */
-function drawDetections(canvas, ctx, boxes, scores, classes, threshold, originalWidth, originalHeight) {
+function drawDetections(canvas, ctx, boxes, scores, classes, threshold, originalWidth, originalHeight, paddingInfo = null) {
     // Clear any previous drawings
     ctx.lineWidth = 2;
     
@@ -552,62 +573,64 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
             // Fix the coordinate order - model outputs [y, x, height, width]
             const [y, x, height, width] = boxes[i];
             
-            // Try adjusting the coordinates to fix the misplacement
-            // If box is "two of its size to the left and half a box low"
-            const boxWidth = width * originalWidth;
-            const boxHeight = height * originalHeight;
-            
-            // Original calculation
-            let boxX = x * originalWidth;
-            let boxY = y * originalHeight;
-            
             // Draw debug info about the box
             ctx.fillStyle = 'white';
-            ctx.fillRect(10, 10, 250, 80);
+            ctx.fillRect(10, 10, 320, 100);
             ctx.fillStyle = 'black';
             ctx.font = '12px monospace';
-            ctx.fillText(`Original coords: [${x.toFixed(3)}, ${y.toFixed(3)}, ${width.toFixed(3)}, ${height.toFixed(3)}]`, 15, 25);
-            ctx.fillText(`Calculated pos: (${boxX.toFixed(1)}, ${boxY.toFixed(1)})`, 15, 40);
-            ctx.fillText(`Size: ${boxWidth.toFixed(1)} x ${boxHeight.toFixed(1)}`, 15, 55);
-            ctx.fillText(`Canvas: ${originalWidth} x ${originalHeight}`, 15, 70);
+            ctx.fillText(`Original coords: [${y.toFixed(3)}, ${x.toFixed(3)}, ${height.toFixed(3)}, ${width.toFixed(3)}]`, 15, 25);
+            
+            let boxX, boxY, boxWidth, boxHeight;
+            
+            // Use more accurate coordinate transformation if we have padding info
+            if (paddingInfo) {
+                // Convert normalized coordinates to model space (0-640)
+                const modelX = x * MODEL_INPUT_SIZE;
+                const modelY = y * MODEL_INPUT_SIZE;
+                const modelWidth = width * MODEL_INPUT_SIZE;
+                const modelHeight = height * MODEL_INPUT_SIZE;
+                
+                // Subtract padding and adjust for scale
+                const unpadX = (modelX - paddingInfo.xPad) / paddingInfo.scale;
+                const unpadY = (modelY - paddingInfo.yPad) / paddingInfo.scale;
+                const unpadWidth = modelWidth / paddingInfo.scale;
+                const unpadHeight = modelHeight / paddingInfo.scale;
+                
+                // Final coordinates
+                boxX = Math.max(0, unpadX);
+                boxY = Math.max(0, unpadY);
+                boxWidth = Math.min(unpadWidth, originalWidth - boxX);
+                boxHeight = Math.min(unpadHeight, originalHeight - boxY);
+                
+                ctx.fillText(`Padding: xPad=${paddingInfo.xPad}, yPad=${paddingInfo.yPad}, scale=${paddingInfo.scale.toFixed(3)}`, 15, 40);
+                ctx.fillText(`Model space: (${modelX.toFixed(1)},${modelY.toFixed(1)}) ${modelWidth.toFixed(1)}x${modelHeight.toFixed(1)}`, 15, 55);
+                ctx.fillText(`Unpadded: (${unpadX.toFixed(1)},${unpadY.toFixed(1)}) ${unpadWidth.toFixed(1)}x${unpadHeight.toFixed(1)}`, 15, 70);
+            } else {
+                // Fallback to simple scaling if no padding info
+                boxX = x * originalWidth;
+                boxY = y * originalHeight;
+                boxWidth = width * originalWidth;
+                boxHeight = height * originalHeight;
+            }
+            
+            ctx.fillText(`Final box: (${boxX.toFixed(1)},${boxY.toFixed(1)}) ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`, 15, 85);
             
             // Draw box based on class
             const className = labels[classes[i]];
             const color = className === 'ball_golf' ? '#FF0000' : '#00FF00';
             
-            // Draw original bounding box
+            // Draw the bounding box
             ctx.strokeStyle = color;
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.rect(boxX, boxY, boxWidth, boxHeight);
             ctx.stroke();
             
-            // Draw a corrected bounding box with offset (testing the hypothesis)
-            // Apply correction factor: "two of its size to the left and half a box low"
-            const correctedBoxX = boxX + boxWidth * 2;  // Move right by 2x width
-            const correctedBoxY = boxY - boxHeight * 0.5;  // Move up by 0.5x height
-            
-            // Draw the corrected box with dashed lines
-            ctx.strokeStyle = '#00FFFF'; // Cyan
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]); // Dashed line
-            ctx.beginPath();
-            ctx.rect(correctedBoxX, correctedBoxY, boxWidth, boxHeight);
-            ctx.stroke();
-            ctx.setLineDash([]); // Reset to solid line
-            
-            // Highlight the corners of both boxes
-            // Original box corners
+            // Highlight the corners
             drawCornerDot(ctx, boxX, boxY, '#FFFF00');
             drawCornerDot(ctx, boxX + boxWidth, boxY, '#FF00FF');
             drawCornerDot(ctx, boxX, boxY + boxHeight, '#00FFFF');
             drawCornerDot(ctx, boxX + boxWidth, boxY + boxHeight, '#FFFFFF');
-            
-            // Corrected box corners
-            drawCornerDot(ctx, correctedBoxX, correctedBoxY, '#FFFF00');
-            drawCornerDot(ctx, correctedBoxX + boxWidth, correctedBoxY, '#FF00FF');
-            drawCornerDot(ctx, correctedBoxX, correctedBoxY + boxHeight, '#00FFFF');
-            drawCornerDot(ctx, correctedBoxX + boxWidth, correctedBoxY + boxHeight, '#FFFFFF');
         }
     }
 }
@@ -699,17 +722,40 @@ function applyNMS(detections, iouThreshold = 0.5) {
     return selectedDetections;
 }
 
-function drawPrediction(canvas, ctx, prediction, threshold = 0.5) {
+function drawPrediction(canvas, ctx, prediction, threshold = 0.5, paddingInfo = null) {
     if (!prediction || prediction.score < threshold) return;
 
     const [x, y, width, height] = prediction.bbox;
     const className = prediction.class;
     
-    // Apply the correction factor
-    const boxWidth = width;
-    const boxHeight = height;
-    const correctedX = x + boxWidth * 2;  // Move right by 2x width
-    const correctedY = y - boxHeight * 0.5;  // Move up by 0.5x height
+    let boxX, boxY, boxWidth, boxHeight;
+    
+    // Use more accurate coordinate transformation if we have padding info
+    if (paddingInfo) {
+        // Convert normalized coordinates to model space (0-640)
+        const modelX = x * MODEL_INPUT_SIZE;
+        const modelY = y * MODEL_INPUT_SIZE;
+        const modelWidth = width * MODEL_INPUT_SIZE;
+        const modelHeight = height * MODEL_INPUT_SIZE;
+        
+        // Subtract padding and adjust for scale
+        const unpadX = (modelX - paddingInfo.xPad) / paddingInfo.scale;
+        const unpadY = (modelY - paddingInfo.yPad) / paddingInfo.scale;
+        const unpadWidth = modelWidth / paddingInfo.scale;
+        const unpadHeight = modelHeight / paddingInfo.scale;
+        
+        // Final coordinates
+        boxX = Math.max(0, unpadX);
+        boxY = Math.max(0, unpadY);
+        boxWidth = unpadWidth;
+        boxHeight = unpadHeight;
+    } else {
+        // Fallback to simple scaling if no padding info
+        boxX = x;
+        boxY = y;
+        boxWidth = width;
+        boxHeight = height;
+    }
     
     // Set color based on class
     const color = className === 'ball_golf' ? '#FF0000' : '#00FF00';
@@ -718,13 +764,13 @@ function drawPrediction(canvas, ctx, prediction, threshold = 0.5) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.rect(correctedX, correctedY, boxWidth, boxHeight);
+    ctx.rect(boxX, boxY, boxWidth, boxHeight);
     ctx.stroke();
     
     // Debug - draw a dot at the top-left corner to verify position
     ctx.fillStyle = '#FFFF00';
     ctx.beginPath();
-    ctx.arc(correctedX, correctedY, 4, 0, 2 * Math.PI);
+    ctx.arc(boxX, boxY, 4, 0, 2 * Math.PI);
     ctx.fill();
 }
 
