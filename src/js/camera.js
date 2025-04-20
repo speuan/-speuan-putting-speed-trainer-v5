@@ -12,6 +12,7 @@ let captureFrameButton;
 let detectObjectsButton;
 let detectionStatus;
 let debugInfo;
+let cameraSelect;
 
 // Stream reference
 let stream = null;
@@ -21,6 +22,9 @@ let appState = null;
 
 // iOS detection
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+// Available cameras
+let availableCameras = [];
 
 // Log iOS detection result immediately
 if (typeof window.debugInfo !== 'undefined') {
@@ -58,6 +62,7 @@ function initCamera(state) {
         detectObjectsButton = document.getElementById('detect-objects');
         detectionStatus = document.getElementById('detection-status');
         debugInfo = document.getElementById('debug-info');
+        cameraSelect = document.getElementById('camera-select');
         
         // Verify elements were found
         if (!video || !canvas || !startCameraButton) {
@@ -69,6 +74,20 @@ function initCamera(state) {
         stopCameraButton.addEventListener('click', stopCamera);
         captureFrameButton.addEventListener('click', captureFrame);
         detectObjectsButton.addEventListener('click', runObjectDetection);
+        
+        // Camera switching
+        if (cameraSelect) {
+            cameraSelect.addEventListener('change', () => {
+                if (stream) {
+                    // If camera is active, restart it with new device
+                    stopCamera();
+                    startCamera();
+                }
+            });
+        }
+        
+        // Enumerate available cameras
+        enumerateCameras();
         
         // Add additional debug info
         updateDebugInfo('Camera module initialized successfully');
@@ -96,6 +115,80 @@ function initCamera(state) {
 }
 
 /**
+ * Enumerate available cameras and populate the selection dropdown
+ */
+async function enumerateCameras() {
+    // Check if mediaDevices API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        updateDebugInfo('Media devices API not available');
+        return;
+    }
+    
+    try {
+        // Request permission first to get access to device labels
+        await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+            .then(stream => {
+                // Stop the stream immediately
+                stream.getTracks().forEach(track => track.stop());
+            })
+            .catch(err => {
+                updateDebugInfo('Permission for camera access denied: ' + err.message);
+                return;
+            });
+        
+        // Now enumerate devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        
+        // Filter to get only video input devices (cameras)
+        availableCameras = devices.filter(device => device.kind === 'videoinput');
+        
+        updateDebugInfo(`Found ${availableCameras.length} camera(s)`);
+        
+        // If we have a camera select dropdown and multiple cameras
+        if (cameraSelect && availableCameras.length > 1) {
+            // Clear existing options except the default
+            while (cameraSelect.options.length > 1) {
+                cameraSelect.remove(1);
+            }
+            
+            // Add cameras to dropdown
+            availableCameras.forEach((camera, index) => {
+                const option = document.createElement('option');
+                option.value = camera.deviceId;
+                // Use label if available, otherwise use a generic name
+                option.text = camera.label || `Camera ${index + 1}`;
+                cameraSelect.appendChild(option);
+            });
+            
+            // Show the select element
+            cameraSelect.style.display = 'block';
+            
+            // Pre-select the back camera if this is a mobile device
+            if (isIOS || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                const backCameraKeywords = ['back', 'rear', 'environment', '1'];
+                // Try to find a back camera option
+                for (let i = 0; i < cameraSelect.options.length; i++) {
+                    const option = cameraSelect.options[i];
+                    const optionText = option.text.toLowerCase();
+                    if (backCameraKeywords.some(keyword => optionText.includes(keyword))) {
+                        cameraSelect.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        } else {
+            // Hide the select if there's only one camera
+            if (cameraSelect) {
+                cameraSelect.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        updateDebugInfo('Error enumerating cameras: ' + error.message);
+        console.error('Error enumerating cameras:', error);
+    }
+}
+
+/**
  * Start camera stream
  */
 async function startCamera() {
@@ -115,6 +208,9 @@ async function startCamera() {
             stopCamera();
         }
         
+        // Get selected camera ID if available
+        const selectedCameraId = cameraSelect && cameraSelect.value ? cameraSelect.value : '';
+        
         // Request camera access with preferred settings
         // Special handling for iOS
         const constraints = {
@@ -122,9 +218,17 @@ async function startCamera() {
             video: {
                 width: { ideal: isIOS ? 640 : 1280 },
                 height: { ideal: isIOS ? 480 : 720 },
-                facingMode: 'environment' // Use back camera on mobile devices
+                facingMode: selectedCameraId ? undefined : 'environment', // Use back camera by default
+                deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined
             }
         };
+        
+        // Log which camera we're trying to use
+        if (selectedCameraId) {
+            updateDebugInfo(`Trying to use camera with ID: ${selectedCameraId}`);
+        } else {
+            updateDebugInfo('Trying to use default environment-facing camera');
+        }
         
         updateDebugInfo('Requesting camera with constraints: ' + JSON.stringify(constraints));
         
@@ -143,7 +247,7 @@ async function startCamera() {
                 updateDebugInfo('Trying with simpler constraints');
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: true,
+                        video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true,
                         audio: false
                     });
                     updateDebugInfo('Camera access granted with simplified constraints');
