@@ -60,8 +60,17 @@ async function initDetectionModel() {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            await response.json();
+            const modelJson = await response.json();
             updateDebugInfo('Model JSON accessed successfully');
+            
+            // Log model information
+            if (modelJson.modelTopology) {
+                updateDebugInfo(`Model type: ${modelJson.modelTopology.model_type || 'Unknown'}`);
+            }
+            
+            if (modelJson.weightsManifest) {
+                updateDebugInfo(`Model has ${modelJson.weightsManifest.length} weight groups`);
+            }
         } catch (fetchError) {
             updateDebugInfo(`Error checking model.json: ${fetchError}`);
             throw new Error('Could not access model.json file');
@@ -76,15 +85,32 @@ async function initDetectionModel() {
         
         updateDebugInfo('Model loaded successfully, warming up...');
         
+        // Log model input/output information
+        updateDebugInfo('Model input names: ' + model.inputNodes);
+        updateDebugInfo('Model output names: ' + model.outputNodes);
+        
         // Warm up the model with a dummy tensor
         const dummyInput = tf.zeros([1, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
-        const testResult = await model.predict(dummyInput);
-        updateDebugInfo(`Model input shape: ${dummyInput.shape}`);
-        updateDebugInfo(`Model output shape: ${testResult.shape}`);
-        dummyInput.dispose();
-        testResult.dispose();
+        const warmupResult = await model.predict(dummyInput);
         
-        updateDebugInfo('Model warm-up complete');
+        // Check output format
+        if (Array.isArray(warmupResult)) {
+            updateDebugInfo(`Model outputs ${warmupResult.length} tensors`);
+            for (let i = 0; i < warmupResult.length; i++) {
+                updateDebugInfo(`Output ${i} shape: ${warmupResult[i].shape}`);
+            }
+            warmupResult.forEach(tensor => tensor.dispose());
+        } else {
+            updateDebugInfo(`Model output tensor shape: ${warmupResult.shape}`);
+            warmupResult.dispose();
+        }
+        
+        dummyInput.dispose();
+        
+        // Log available classes
+        updateDebugInfo(`Available class labels: ${labels.join(', ')}`);
+        
+        updateDebugInfo('Model warm-up complete, detection ready');
         isModelLoading = false;
         return model;
     } catch (error) {
@@ -123,10 +149,15 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
             imgTensor = tf.tidy(() => {
                 // Convert to tensor
                 const imageTensor = tf.browser.fromPixels(imageData);
+                updateDebugInfo(`Created image tensor: ${imageTensor.shape}`);
+                
                 // Normalize pixel values to [0-1]
                 const normalized = tf.div(tf.cast(imageTensor, 'float32'), 255);
+                
                 // Resize to model input size
                 const resized = tf.image.resizeBilinear(normalized, [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+                updateDebugInfo(`Resized to: ${MODEL_INPUT_SIZE}x${MODEL_INPUT_SIZE}`);
+                
                 // Add batch dimension [1, 640, 640, 3]
                 return resized.expandDims(0);
             });
@@ -149,6 +180,16 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
             predictions = await model.predict(imgTensor);
             updateDebugInfo('Model execution complete');
             
+            // Log shape of predictions to understand the model output
+            if (Array.isArray(predictions)) {
+                updateDebugInfo(`Model returned ${predictions.length} output tensors`);
+                for (let i = 0; i < predictions.length; i++) {
+                    updateDebugInfo(`Output tensor ${i} shape: ${predictions[i].shape}`);
+                }
+            } else {
+                updateDebugInfo(`Model returned a single output tensor of shape: ${predictions.shape}`);
+            }
+            
         } catch (inferenceError) {
             updateDebugInfo('Error during inference: ' + inferenceError.message);
             throw inferenceError;
@@ -159,14 +200,35 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
         
         try {
             // Process results
-            const arrayPreds = await predictions.array();
-            predictions.dispose();
+            let arrayPreds;
+            if (Array.isArray(predictions)) {
+                // If multiple outputs, handle differently
+                arrayPreds = await Promise.all(predictions.map(p => p.array()));
+                predictions.forEach(p => p.dispose());
+            } else {
+                // Single output tensor (usual case)
+                arrayPreds = await predictions.array();
+                predictions.dispose();
+            }
+            
+            updateDebugInfo(`Converted predictions to array format`);
+            
+            // Debug prediction shape
+            if (Array.isArray(arrayPreds) && arrayPreds.length > 0) {
+                updateDebugInfo(`Prediction array shape: ${arrayPreds.length} elements`);
+                updateDebugInfo(`First prediction element has shape: ${arrayPreds[0].length} x ${arrayPreds[0][0] ? arrayPreds[0][0].length : 'N/A'}`);
+            }
             
             // Process the output into a usable format
-            const detections = processDetections(arrayPreds[0], threshold);
+            const detections = processDetections(Array.isArray(arrayPreds) ? arrayPreds[0] : arrayPreds, threshold);
             
             // Only proceed if we have detections
             if (detections && detections.length > 0) {
+                updateDebugInfo(`Processed ${detections.length} valid detections`);
+                detections.forEach((d, i) => {
+                    updateDebugInfo(`Detection ${i+1}: ${d.class} (${Math.round(d.confidence*100)}%) at [${d.x.toFixed(2)}, ${d.y.toFixed(2)}] size [${d.w.toFixed(2)}, ${d.h.toFixed(2)}]`);
+                });
+                
                 // Draw the detections on the canvas
                 drawDetections(canvas, ctx, detections, originalWidth, originalHeight);
                 
@@ -201,40 +263,119 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
  * @returns {Array} Processed detections
  */
 function processDetections(predictions, threshold) {
-    if (!predictions || predictions.length !== 6) {  // Now expecting 6 arrays (classes included)
-        updateDebugInfo('Invalid prediction format');
+    updateDebugInfo(`Processing predictions with ${threshold} threshold`);
+    
+    // Log prediction shape for debugging
+    if (!predictions || !Array.isArray(predictions)) {
+        updateDebugInfo('Invalid predictions format: not an array');
         return null;
     }
     
-    // Get all detections above minimum confidence
-    const detections = [];
-    for (let i = 0; i < predictions[0].length; i++) {
-        const confidence = predictions[4][i];
-        if (confidence > threshold) {
-            // Get class with highest probability
-            const classIndex = Math.round(predictions[5][i]);
-            const className = labels[classIndex] || 'unknown';
-            
-            detections.push({
-                x: predictions[0][i] / MODEL_INPUT_SIZE,
-                y: predictions[1][i] / MODEL_INPUT_SIZE,
-                w: predictions[2][i] / MODEL_INPUT_SIZE,
-                h: predictions[3][i] / MODEL_INPUT_SIZE,
-                confidence: confidence,
-                class: className,
-                classIndex: classIndex
-            });
+    updateDebugInfo(`Prediction array length: ${predictions.length}`);
+    
+    // Handle YOLO v8 output format which might vary
+    // Try to determine the format of the predictions
+    
+    let detections = [];
+    
+    // Try the expected format for YOLO v8 (6 arrays: bbox_x, bbox_y, bbox_w, bbox_h, confidence, class)
+    if (predictions.length === 6) {
+        updateDebugInfo('Detected 6-array YOLO format - standard output');
+        
+        // Standard processing with 6 arrays
+        for (let i = 0; i < predictions[0].length; i++) {
+            const confidence = predictions[4][i];
+            if (confidence > threshold) {
+                // Get class with highest probability
+                const classIndex = Math.round(predictions[5][i]);
+                const className = labels[classIndex] || 'unknown';
+                
+                detections.push({
+                    x: predictions[0][i] / MODEL_INPUT_SIZE,
+                    y: predictions[1][i] / MODEL_INPUT_SIZE,
+                    w: predictions[2][i] / MODEL_INPUT_SIZE,
+                    h: predictions[3][i] / MODEL_INPUT_SIZE,
+                    confidence: confidence,
+                    class: className,
+                    classIndex: classIndex
+                });
+            }
         }
+    } 
+    // Try the alternative format where the first dimension is the number of detections
+    else if (predictions.length > 0 && Array.isArray(predictions[0]) && predictions[0].length === 5) {
+        updateDebugInfo('Detected detection-first YOLO format');
+        
+        // Process each detection
+        for (let i = 0; i < predictions.length; i++) {
+            const confidence = predictions[i][4];
+            if (confidence > threshold) {
+                // Default to class 0 (ball_golf) if we don't have class info
+                const className = labels[0] || 'unknown';
+                
+                detections.push({
+                    x: predictions[i][0] / MODEL_INPUT_SIZE,
+                    y: predictions[i][1] / MODEL_INPUT_SIZE,
+                    w: predictions[i][2] / MODEL_INPUT_SIZE,
+                    h: predictions[i][3] / MODEL_INPUT_SIZE,
+                    confidence: confidence,
+                    class: className,
+                    classIndex: 0
+                });
+            }
+        }
+    }
+    // Try the format where the output is a single array with 7 values per detection
+    else if (predictions.length > 0 && Array.isArray(predictions[0]) && predictions[0].length >= 7) {
+        updateDebugInfo('Detected flattened YOLO format (7+ values per detection)');
+        
+        // Process each detection (x, y, w, h, conf, class1_prob, class2_prob, ...)
+        for (let i = 0; i < predictions.length; i++) {
+            const detection = predictions[i];
+            const confidence = detection[4];
+            
+            if (confidence > threshold) {
+                // Find class with highest probability
+                let maxClassProb = 0;
+                let maxClassIdx = 0;
+                for (let c = 5; c < detection.length; c++) {
+                    if (detection[c] > maxClassProb) {
+                        maxClassProb = detection[c];
+                        maxClassIdx = c - 5;
+                    }
+                }
+                
+                const className = labels[maxClassIdx] || 'unknown';
+                
+                detections.push({
+                    x: detection[0] / MODEL_INPUT_SIZE,
+                    y: detection[1] / MODEL_INPUT_SIZE,
+                    w: detection[2] / MODEL_INPUT_SIZE,
+                    h: detection[3] / MODEL_INPUT_SIZE,
+                    confidence: confidence,
+                    class: className,
+                    classIndex: maxClassIdx
+                });
+            }
+        }
+    }
+    else {
+        updateDebugInfo(`Unknown prediction format. Expected 6 arrays, got ${predictions.length}`);
+        return [];
     }
     
     if (detections.length === 0) {
-        return null;
+        updateDebugInfo('No detections above threshold');
+        return [];
     }
+    
+    updateDebugInfo(`Found ${detections.length} detections above threshold`);
     
     // Cluster overlapping detections of the same class
     const clusters = clusterDetections(detections);
+    updateDebugInfo(`After clustering: ${clusters.length} detections`);
     
-    // Return all clusters (not just the best one)
+    // Return all clusters
     return clusters;
 }
 
@@ -327,6 +468,9 @@ function drawDetections(canvas, ctx, detections, originalWidth, originalHeight) 
         'coin': '#00FF00'       // Green
     };
     
+    // Save current context state
+    ctx.save();
+    
     // Draw each detection with its class color
     for (const detection of detections) {
         // Extract values from detection (these are normalized 0-1)
@@ -346,34 +490,58 @@ function drawDetections(canvas, ctx, detections, originalWidth, originalHeight) 
         const drawY = centerY - (boxHeight / 2);
         
         try {
-            // Draw thin bounding box
-            ctx.lineWidth = 3;
+            // Draw bounding box with thicker stroke for visibility
+            ctx.lineWidth = 4;
             ctx.strokeStyle = color;
-            ctx.strokeRect(drawX, drawY, boxWidth, boxHeight);
+            ctx.beginPath();
+            ctx.rect(drawX, drawY, boxWidth, boxHeight);
+            ctx.stroke();
             
-            // Draw class name and confidence score
-            const text = `${className}: ${(confidence * 100).toFixed(1)}%`;
-            ctx.font = '14px Arial';
+            // Add a semi-transparent fill to make the box more visible
+            ctx.fillStyle = `${color}33`; // 20% opacity
+            ctx.fillRect(drawX, drawY, boxWidth, boxHeight);
             
-            // Text background
-            const padding = 4;
+            // Draw class name and confidence score with improved visibility
+            const confidencePercent = Math.round(confidence * 100);
+            const text = `${className}: ${confidencePercent}%`;
+            
+            // Text styling for better visibility
+            ctx.font = 'bold 16px Arial';
+            
+            // Measure text for background
             const textMetrics = ctx.measureText(text);
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            const textWidth = textMetrics.width;
+            const textHeight = 20; // Approximate height
+            
+            // Draw text background
+            ctx.fillStyle = color;
             ctx.fillRect(
-                drawX, 
-                drawY - 20, 
-                textMetrics.width + padding * 2, 
-                18
+                drawX - 2, 
+                drawY - textHeight - 2, 
+                textWidth + 12, 
+                textHeight + 4
             );
             
-            // Text
+            // Draw text
+            ctx.fillStyle = '#FFFFFF'; // White text
+            ctx.fillText(text, drawX + 4, drawY - 5);
+            
+            // Draw center point for better visibility
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
             ctx.fillStyle = '#FFFFFF';
-            ctx.fillText(text, drawX + padding, drawY - 6);
+            ctx.fill();
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
             
         } catch (error) {
             updateDebugInfo(`Error during drawing: ${error.message}`);
         }
     }
+    
+    // Restore context state
+    ctx.restore();
 }
 
 // Export functions for use in other modules

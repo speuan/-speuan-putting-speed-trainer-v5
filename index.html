@@ -551,11 +551,11 @@
                     document.getElementById('detect-objects').disabled = true;
                     
                     // Run detection (from detection.js)
-                    window.detectObjects(canvas, ctx, 0.5).then(detections => {
+                    window.detectObjects(canvas, ctx, 0.3).then(detections => {
                         // Update status with detection results
                         if (detections && detections.length > 0) {
                             const message = `Found ${detections.length} object(s): ` + 
-                                detections.map(d => `${d.class}(${Math.round(d.score*100)}%)`).join(', ');
+                                detections.map(d => `${d.class}(${Math.round(d.confidence*100)}%)`).join(', ');
                             
                             if (detectionStatus) {
                                 detectionStatus.textContent = message;
@@ -618,14 +618,31 @@
             // This is a placeholder function - in a real app, we would calculate speed
             // from multiple frames over time and use the calibrated pixel-to-cm ratio
             const ballDetections = detections.filter(d => d.class === 'ball_golf');
+            const coinDetections = detections.filter(d => d.class === 'coin');
+            
+            window.updateDebugInfo(`INLINE: Found ${ballDetections.length} balls and ${coinDetections.length} coins`);
             
             // For now, we'll just simulate a realistic speed
             let speed;
             if (ballDetections.length > 0) {
                 // Generate a more realistic golf putting speed (between 1.5 and 3.5 m/s)
                 speed = (Math.random() * 2 + 1.5).toFixed(2);
+                
+                // Log the highest confidence ball detection
+                if (ballDetections.length > 0) {
+                    const bestBall = ballDetections.reduce((prev, current) => 
+                        (prev.confidence > current.confidence) ? prev : current);
+                    window.updateDebugInfo(`INLINE: Best ball detection - confidence: ${(bestBall.confidence*100).toFixed(1)}%`);
+                }
             } else {
                 speed = '0';
+            }
+            
+            // If we detected a coin, also log it
+            if (coinDetections.length > 0) {
+                const bestCoin = coinDetections.reduce((prev, current) => 
+                    (prev.confidence > current.confidence) ? prev : current);
+                window.updateDebugInfo(`INLINE: Best coin detection - confidence: ${(bestCoin.confidence*100).toFixed(1)}%`);
             }
             
             document.getElementById('ball-speed').textContent = speed;
