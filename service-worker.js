@@ -12,7 +12,7 @@ const ASSETS_TO_CACHE = [
   './src/js/camera.js',
   './src/js/detection.js',
   'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js',
-  './my_model_web_model/model.json'
+  './my_model_web_model 2/model.json'
   // Model shards will be cached by TensorFlow.js
 ];
 

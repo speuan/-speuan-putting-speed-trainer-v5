@@ -5,7 +5,7 @@
 // Model reference
 let model = null;
 let isModelLoading = false;
-let labels = ['ball_golf']; // Labels for our detection classes
+let labels = ['ball_golf', 'coin']; // Labels for our detection classes
 const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
 const MIN_CONFIDENCE = 0.5; // Minimum confidence threshold
 const IOU_THRESHOLD = 0.3; // Intersection over Union threshold for clustering
@@ -52,7 +52,7 @@ async function initDetectionModel() {
         }
         
         updateDebugInfo('Loading object detection model...');
-        const modelUrl = './my_model_web_model/model.json';
+        const modelUrl = './my_model_web_model 2/model.json';
         
         // Test if model.json is accessible
         try {
@@ -167,8 +167,8 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
             
             // Only proceed if we have detections
             if (detections && detections.length > 0) {
-                // Draw the best detection on the canvas
-                drawDetections(canvas, ctx, detections[0], originalWidth, originalHeight);
+                // Draw the detections on the canvas
+                drawDetections(canvas, ctx, detections, originalWidth, originalHeight);
                 
                 // Return the detections for further processing
                 return detections;
@@ -201,7 +201,7 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
  * @returns {Array} Processed detections
  */
 function processDetections(predictions, threshold) {
-    if (!predictions || predictions.length !== 5) {
+    if (!predictions || predictions.length !== 6) {  // Now expecting 6 arrays (classes included)
         updateDebugInfo('Invalid prediction format');
         return null;
     }
@@ -211,12 +211,18 @@ function processDetections(predictions, threshold) {
     for (let i = 0; i < predictions[0].length; i++) {
         const confidence = predictions[4][i];
         if (confidence > threshold) {
+            // Get class with highest probability
+            const classIndex = Math.round(predictions[5][i]);
+            const className = labels[classIndex] || 'unknown';
+            
             detections.push({
                 x: predictions[0][i] / MODEL_INPUT_SIZE,
                 y: predictions[1][i] / MODEL_INPUT_SIZE,
                 w: predictions[2][i] / MODEL_INPUT_SIZE,
                 h: predictions[3][i] / MODEL_INPUT_SIZE,
-                confidence: confidence
+                confidence: confidence,
+                class: className,
+                classIndex: classIndex
             });
         }
     }
@@ -225,18 +231,11 @@ function processDetections(predictions, threshold) {
         return null;
     }
     
-    // Cluster overlapping detections
+    // Cluster overlapping detections of the same class
     const clusters = clusterDetections(detections);
     
-    // Get the cluster with highest confidence
-    let bestCluster = clusters[0];
-    for (let i = 1; i < clusters.length; i++) {
-        if (clusters[i].confidence > bestCluster.confidence) {
-            bestCluster = clusters[i];
-        }
-    }
-    
-    return [bestCluster];
+    // Return all clusters (not just the best one)
+    return clusters;
 }
 
 /**
@@ -250,8 +249,10 @@ function clusterDetections(detections) {
     for (const detection of detections) {
         let added = false;
         
+        // Only cluster detections of the same class
         for (const cluster of clusters) {
-            if (calculateIoU(detection, cluster) > IOU_THRESHOLD) {
+            if (cluster.classIndex === detection.classIndex && 
+                calculateIoU(detection, cluster) > IOU_THRESHOLD) {
                 // Merge detection into cluster with weighted average
                 const totalWeight = cluster.confidence + detection.confidence;
                 cluster.x = (cluster.x * cluster.confidence + detection.x * detection.confidence) / totalWeight;
@@ -311,55 +312,67 @@ function calculateIoU(box1, box2) {
  * Draw detection results on canvas
  * @param {HTMLCanvasElement} canvas - Canvas element
  * @param {CanvasRenderingContext2D} ctx - Canvas context
- * @param {Object} detection - Detection object
+ * @param {Array} detections - Array of detection objects
  * @param {number} originalWidth - Original canvas width
  * @param {number} originalHeight - Original canvas height
  */
-function drawDetections(canvas, ctx, detection, originalWidth, originalHeight) {
-    if (!canvas || !ctx || !detection) {
+function drawDetections(canvas, ctx, detections, originalWidth, originalHeight) {
+    if (!canvas || !ctx || !detections) {
         return;
     }
     
-    // Extract values from detection (these are normalized 0-1)
-    const { x, y, w, h, confidence } = detection;
+    // Define colors for different classes
+    const classColors = {
+        'ball_golf': '#FF0000', // Red
+        'coin': '#00FF00'       // Green
+    };
     
-    // Convert normalized coordinates to canvas coordinates
-    const centerX = x * originalWidth;
-    const centerY = y * originalHeight;
-    const boxWidth = w * originalWidth;
-    const boxHeight = h * originalHeight;
-    
-    // Calculate top-left corner for drawing
-    const drawX = centerX - (boxWidth / 2);
-    const drawY = centerY - (boxHeight / 2);
-    
-    try {
-        // Draw thin bounding box
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#FF0000';
-        ctx.strokeRect(drawX, drawY, boxWidth, boxHeight);
+    // Draw each detection with its class color
+    for (const detection of detections) {
+        // Extract values from detection (these are normalized 0-1)
+        const { x, y, w, h, confidence, class: className } = detection;
         
-        // Draw small confidence score
-        const text = `${(confidence * 100).toFixed(1)}%`;
-        ctx.font = '14px Arial';
+        // Get color for class or use default red
+        const color = classColors[className] || '#FF0000';
         
-        // Text background
-        const padding = 4;
-        const textMetrics = ctx.measureText(text);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(
-            drawX, 
-            drawY - 20, 
-            textMetrics.width + padding * 2, 
-            18
-        );
+        // Convert normalized coordinates to canvas coordinates
+        const centerX = x * originalWidth;
+        const centerY = y * originalHeight;
+        const boxWidth = w * originalWidth;
+        const boxHeight = h * originalHeight;
         
-        // Text
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(text, drawX + padding, drawY - 6);
+        // Calculate top-left corner for drawing
+        const drawX = centerX - (boxWidth / 2);
+        const drawY = centerY - (boxHeight / 2);
         
-    } catch (error) {
-        updateDebugInfo(`Error during drawing: ${error.message}`);
+        try {
+            // Draw thin bounding box
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = color;
+            ctx.strokeRect(drawX, drawY, boxWidth, boxHeight);
+            
+            // Draw class name and confidence score
+            const text = `${className}: ${(confidence * 100).toFixed(1)}%`;
+            ctx.font = '14px Arial';
+            
+            // Text background
+            const padding = 4;
+            const textMetrics = ctx.measureText(text);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(
+                drawX, 
+                drawY - 20, 
+                textMetrics.width + padding * 2, 
+                18
+            );
+            
+            // Text
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(text, drawX + padding, drawY - 6);
+            
+        } catch (error) {
+            updateDebugInfo(`Error during drawing: ${error.message}`);
+        }
     }
 }
 
