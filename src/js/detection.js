@@ -379,17 +379,19 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                         const unpadWidth = modelWidth / paddingInfo.scale;
                         const unpadHeight = modelHeight / paddingInfo.scale;
                         
+                        // Apply a small position adjustment if needed based on testing
+                        const adjustX = 0; // Fine-tune horizontal positioning if needed
+                        const adjustY = 0; // Fine-tune vertical positioning if needed
+                        
                         // Ensure values are within canvas bounds
-                        const boxX = Math.max(0, unpadX);
-                        const boxY = Math.max(0, unpadY);
+                        const boxX = Math.max(0, unpadX + adjustX);
+                        const boxY = Math.max(0, unpadY + adjustY);
                         const boxWidth = Math.min(unpadWidth, canvas.width - boxX);
                         const boxHeight = Math.min(unpadHeight, canvas.height - boxY);
                         
-                        updateDebugInfo(`Drawing box at (${boxX.toFixed(1)},${boxY.toFixed(1)}) with size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
-                        
                         // Draw the bounding box
                         ctx.strokeStyle = '#FF0000'; // Red color for golf ball
-                        ctx.lineWidth = 3; // Thicker line
+                        ctx.lineWidth = 4; // Thicker line for better visibility
                         ctx.beginPath();
                         ctx.rect(boxX, boxY, boxWidth, boxHeight);
                         ctx.stroke();
@@ -528,57 +530,12 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
     // Clear any previous drawings
     ctx.lineWidth = 2;
     
-    // Add debug boxes at corners
-    const boxSize = 20;
-    
-    // Top-left (Red)
-    ctx.strokeStyle = '#FF0000';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.rect(0, 0, boxSize, boxSize);
-    ctx.stroke();
-    
-    // Top-right (Green)
-    ctx.strokeStyle = '#00FF00';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.rect(originalWidth - boxSize, 0, boxSize, boxSize);
-    ctx.stroke();
-    
-    // Bottom-left (Blue)
-    ctx.strokeStyle = '#0000FF';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.rect(0, originalHeight - boxSize, boxSize, boxSize);
-    ctx.stroke();
-    
-    // Bottom-right (Yellow)
-    ctx.strokeStyle = '#FFFF00';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.rect(originalWidth - boxSize, originalHeight - boxSize, boxSize, boxSize);
-    ctx.stroke();
-    
-    // Draw the center of the image
-    ctx.strokeStyle = '#FF00FF'; // Magenta
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.rect(originalWidth/2 - boxSize/2, originalHeight/2 - boxSize/2, boxSize, boxSize);
-    ctx.stroke();
-    
     // Now draw the actual detection boxes
     for (let i = 0; i < scores.length; i++) {
         if (scores[i] > threshold) {
             // Get box coordinates - note these are normalized [0-1] values
-            // Fix the coordinate order - model outputs [y, x, height, width]
+            // The model outputs [y, x, height, width]
             const [y, x, height, width] = boxes[i];
-            
-            // Draw debug info about the box
-            ctx.fillStyle = 'white';
-            ctx.fillRect(10, 10, 320, 100);
-            ctx.fillStyle = 'black';
-            ctx.font = '12px monospace';
-            ctx.fillText(`Original coords: [${y.toFixed(3)}, ${x.toFixed(3)}, ${height.toFixed(3)}, ${width.toFixed(3)}]`, 15, 25);
             
             let boxX, boxY, boxWidth, boxHeight;
             
@@ -596,15 +553,15 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
                 const unpadWidth = modelWidth / paddingInfo.scale;
                 const unpadHeight = modelHeight / paddingInfo.scale;
                 
-                // Final coordinates
-                boxX = Math.max(0, unpadX);
-                boxY = Math.max(0, unpadY);
+                // Apply a small position adjustment if needed based on testing
+                const adjustX = 0; // Fine-tune horizontal positioning if needed
+                const adjustY = 0; // Fine-tune vertical positioning if needed
+                
+                // Final coordinates with bounds checking
+                boxX = Math.max(0, unpadX + adjustX);
+                boxY = Math.max(0, unpadY + adjustY);
                 boxWidth = Math.min(unpadWidth, originalWidth - boxX);
                 boxHeight = Math.min(unpadHeight, originalHeight - boxY);
-                
-                ctx.fillText(`Padding: xPad=${paddingInfo.xPad}, yPad=${paddingInfo.yPad}, scale=${paddingInfo.scale.toFixed(3)}`, 15, 40);
-                ctx.fillText(`Model space: (${modelX.toFixed(1)},${modelY.toFixed(1)}) ${modelWidth.toFixed(1)}x${modelHeight.toFixed(1)}`, 15, 55);
-                ctx.fillText(`Unpadded: (${unpadX.toFixed(1)},${unpadY.toFixed(1)}) ${unpadWidth.toFixed(1)}x${unpadHeight.toFixed(1)}`, 15, 70);
             } else {
                 // Fallback to simple scaling if no padding info
                 boxX = x * originalWidth;
@@ -612,8 +569,6 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
                 boxWidth = width * originalWidth;
                 boxHeight = height * originalHeight;
             }
-            
-            ctx.fillText(`Final box: (${boxX.toFixed(1)},${boxY.toFixed(1)}) ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`, 15, 85);
             
             // Draw box based on class
             const className = labels[classes[i]];
@@ -625,22 +580,8 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
             ctx.beginPath();
             ctx.rect(boxX, boxY, boxWidth, boxHeight);
             ctx.stroke();
-            
-            // Highlight the corners
-            drawCornerDot(ctx, boxX, boxY, '#FFFF00');
-            drawCornerDot(ctx, boxX + boxWidth, boxY, '#FF00FF');
-            drawCornerDot(ctx, boxX, boxY + boxHeight, '#00FFFF');
-            drawCornerDot(ctx, boxX + boxWidth, boxY + boxHeight, '#FFFFFF');
         }
     }
-}
-
-// Helper function to draw a corner dot
-function drawCornerDot(ctx, x, y, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, 4, 0, 2 * Math.PI);
-    ctx.fill();
 }
 
 /**
@@ -744,9 +685,13 @@ function drawPrediction(canvas, ctx, prediction, threshold = 0.5, paddingInfo = 
         const unpadWidth = modelWidth / paddingInfo.scale;
         const unpadHeight = modelHeight / paddingInfo.scale;
         
+        // Apply a small position adjustment if needed based on testing
+        const adjustX = 0; // Fine-tune horizontal positioning if needed
+        const adjustY = 0; // Fine-tune vertical positioning if needed
+        
         // Final coordinates
-        boxX = Math.max(0, unpadX);
-        boxY = Math.max(0, unpadY);
+        boxX = Math.max(0, unpadX + adjustX);
+        boxY = Math.max(0, unpadY + adjustY);
         boxWidth = unpadWidth;
         boxHeight = unpadHeight;
     } else {
@@ -766,12 +711,6 @@ function drawPrediction(canvas, ctx, prediction, threshold = 0.5, paddingInfo = 
     ctx.beginPath();
     ctx.rect(boxX, boxY, boxWidth, boxHeight);
     ctx.stroke();
-    
-    // Debug - draw a dot at the top-left corner to verify position
-    ctx.fillStyle = '#FFFF00';
-    ctx.beginPath();
-    ctx.arc(boxX, boxY, 4, 0, 2 * Math.PI);
-    ctx.fill();
 }
 
 // Export functions for use in other modules
