@@ -222,6 +222,7 @@
             </div>
             <div class="controls" style="margin-top: 0.5rem;">
                 <button id="test-camera" onclick="testCameraAccess()" style="background-color: #e74c3c;">Test Camera Access</button>
+                <button onclick="manualInitialize()" style="background-color: #2ecc71;">Manual Initialize</button>
             </div>
         </div>
         
@@ -245,9 +246,170 @@
         <p>&copy; 2024 Golf Putting Speed Trainer</p>
     </footer>
 
-    <script src="src/js/app.js"></script>
-    <script src="src/js/detection.js"></script>
-    <script src="src/js/camera.js"></script>
+    <!-- Add script loading verification -->
+    <script>
+        // Check if scripts are loaded correctly
+        function checkScriptLoading() {
+            const timestamp = new Date().toISOString().substring(11, 19);
+            if (window.debugInfo) {
+                window.debugInfo.textContent += `\n[${timestamp}] Script loading check:`;
+                
+                // Check each script
+                if (window.tf) {
+                    window.debugInfo.textContent += `\n- TensorFlow.js: LOADED (${tf.version.tfjs})`;
+                } else {
+                    window.debugInfo.textContent += `\n- TensorFlow.js: MISSING!`;
+                }
+                
+                if (typeof window.initCamera === 'function') {
+                    window.debugInfo.textContent += `\n- camera.js: LOADED`;
+                } else {
+                    window.debugInfo.textContent += `\n- camera.js: MISSING!`;
+                }
+                
+                if (typeof window.initDetectionModel === 'function') {
+                    window.debugInfo.textContent += `\n- detection.js: LOADED`;
+                } else {
+                    window.debugInfo.textContent += `\n- detection.js: MISSING!`;
+                }
+                
+                if (typeof window.debugLog === 'function') {
+                    window.debugInfo.textContent += `\n- app.js: LOADED`;
+                } else {
+                    window.debugInfo.textContent += `\n- app.js: MISSING!`;
+                }
+            }
+        }
+        
+        // Manual initialization of camera module
+        function manualInitialize() {
+            const timestamp = new Date().toISOString().substring(11, 19);
+            if (window.debugInfo) {
+                window.debugInfo.textContent += `\n[${timestamp}] Manual initialization requested`;
+            }
+            
+            // First check if the modules are loaded
+            if (typeof window.initCamera === 'function') {
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${timestamp}] Camera module is loaded, initializing...`;
+                }
+                
+                // Create a minimal app state
+                const appState = {
+                    isRecording: false,
+                    frameCount: 0,
+                    ballPositions: [],
+                    pixelToCmRatio: 1
+                };
+                
+                // Initialize camera with state
+                try {
+                    window.initCamera(appState);
+                    if (window.debugInfo) {
+                        window.debugInfo.textContent += `\n[${timestamp}] Camera initialization successful`;
+                    }
+                } catch (error) {
+                    if (window.debugInfo) {
+                        window.debugInfo.textContent += `\n[${timestamp}] Camera initialization failed: ${error.message}`;
+                    }
+                    alert("Camera initialization failed: " + error.message);
+                }
+            } else {
+                if (window.debugInfo) {
+                    window.debugInfo.textContent += `\n[${timestamp}] Camera module is not loaded yet`;
+                }
+                
+                // Try to reload the camera.js script directly
+                const script = document.createElement('script');
+                script.src = './src/js/camera.js';
+                script.onload = () => {
+                    if (window.debugInfo) {
+                        window.debugInfo.textContent += `\n[${timestamp}] Camera module reloaded`;
+                    }
+                    
+                    if (typeof window.initCamera === 'function') {
+                        // Create a minimal app state
+                        const appState = {
+                            isRecording: false,
+                            frameCount: 0,
+                            ballPositions: [],
+                            pixelToCmRatio: 1
+                        };
+                        
+                        // Initialize camera with state
+                        try {
+                            window.initCamera(appState);
+                            if (window.debugInfo) {
+                                window.debugInfo.textContent += `\n[${timestamp}] Camera initialization successful after reload`;
+                            }
+                        } catch (error) {
+                            if (window.debugInfo) {
+                                window.debugInfo.textContent += `\n[${timestamp}] Camera initialization failed after reload: ${error.message}`;
+                            }
+                            alert("Camera initialization failed after reload: " + error.message);
+                        }
+                    } else {
+                        if (window.debugInfo) {
+                            window.debugInfo.textContent += `\n[${timestamp}] Camera module still not available after reload`;
+                        }
+                        alert("Camera module could not be loaded. Please check your connection and try again.");
+                    }
+                };
+                
+                script.onerror = (error) => {
+                    if (window.debugInfo) {
+                        window.debugInfo.textContent += `\n[${timestamp}] Error reloading camera module: ${error}`;
+                    }
+                    alert("Error loading camera module: " + error);
+                };
+                
+                document.body.appendChild(script);
+            }
+        }
+        
+        // Schedule the check after a short delay
+        setTimeout(checkScriptLoading, 1000);
+    </script>
+
+    <!-- Load scripts with error handling -->
+    <script>
+        function loadScript(src, onload, onerror) {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = onload;
+            script.onerror = onerror;
+            document.body.appendChild(script);
+        }
+    
+        // Load scripts in sequence with error handling
+        loadScript('src/js/app.js', 
+            () => {
+                if (window.debugInfo) window.debugInfo.textContent += '\napp.js loaded successfully';
+                
+                loadScript('src/js/detection.js', 
+                    () => {
+                        if (window.debugInfo) window.debugInfo.textContent += '\ndetection.js loaded successfully';
+                        
+                        loadScript('src/js/camera.js', 
+                            () => {
+                                if (window.debugInfo) window.debugInfo.textContent += '\ncamera.js loaded successfully';
+                            }, 
+                            (error) => {
+                                if (window.debugInfo) window.debugInfo.textContent += '\nError loading camera.js: ' + error;
+                            }
+                        );
+                    }, 
+                    (error) => {
+                        if (window.debugInfo) window.debugInfo.textContent += '\nError loading detection.js: ' + error;
+                    }
+                );
+            }, 
+            (error) => {
+                if (window.debugInfo) window.debugInfo.textContent += '\nError loading app.js: ' + error;
+            }
+        );
+    </script>
+
     <script>
         // Register service worker
         if ('serviceWorker' in navigator) {
