@@ -535,7 +535,7 @@
         function updateBallSpeed(detections) {
             // This is a placeholder function - in a real app, we would calculate speed
             // from multiple frames over time and use the calibrated pixel-to-cm ratio
-            const ballDetections = detections.filter(d => d.class === 'Ball');
+            const ballDetections = detections.filter(d => d.class === 'ball_golf');
             
             // For now, we'll just simulate a realistic speed
             let speed;

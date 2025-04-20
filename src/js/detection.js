@@ -5,7 +5,7 @@
 // Model reference
 let model = null;
 let isModelLoading = false;
-let labels = ['Ball', 'Coin']; // Labels for our detection classes
+let labels = ['ball_golf', 'Coin']; // Labels for our detection classes
 const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
 
 // iOS detection
@@ -170,6 +170,30 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
         try {
             // Process results 
             updateDebugInfo('Processing detection results');
+            // Check if predictions is an array with at least 3 elements
+            if (!Array.isArray(predictions) || predictions.length < 3) {
+                throw new Error(`Expected predictions array with at least 3 elements, got: ${predictions?.length || 'undefined'}`);
+            }
+            
+            // Check if each prediction tensor exists before calling arraySync
+            if (!predictions[0]) {
+                throw new Error('Boxes tensor (predictions[0]) is undefined');
+            }
+            
+            if (!predictions[1]) {
+                throw new Error('Scores tensor (predictions[1]) is undefined');
+            }
+            
+            if (!predictions[2]) {
+                throw new Error('Classes tensor (predictions[2]) is undefined');
+            }
+            
+            // Log the structure of the predictions for debugging
+            updateDebugInfo(`Predictions array length: ${predictions.length}`);
+            predictions.forEach((tensor, i) => {
+                updateDebugInfo(`Prediction[${i}] shape: ${tensor ? tensor.shape : 'undefined'}`);
+            });
+            
             const boxes = await predictions[0].arraySync();
             const scores = await predictions[1].arraySync();
             const classes = await predictions[2].arraySync();
@@ -194,6 +218,7 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
             return processDetections(boxes[0], scores[0], classes[0], threshold);
         } catch (processError) {
             updateDebugInfo('Error processing results: ' + processError.message);
+            console.error('Error processing results:', processError);
             throw processError;
         }
     } catch (error) {
@@ -259,7 +284,7 @@ function drawDetections(canvas, ctx, boxes, scores, classes, threshold, original
             // Draw box based on class
             const className = labels[classes[i]];
             const score = Math.round(scores[i] * 100);
-            const color = className === 'Ball' ? '#FF0000' : '#00FF00';
+            const color = className === 'ball_golf' ? '#FF0000' : '#00FF00';
             
             // Draw bounding box
             ctx.strokeStyle = color;
