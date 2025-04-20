@@ -310,30 +310,40 @@ async function detectObjects(canvas, ctx, threshold = 0.5) {
                 
                 // Draw detections if any found
                 if (parsedDetections.length > 0) {
+                    updateDebugInfo(`Drawing ${parsedDetections.length} bounding boxes on canvas`);
+                    
                     // Draw boxes on canvas
                     for (const detection of parsedDetections) {
                         const [x, y, width, height] = detection.box;
                         
-                        // Scale to canvas
+                        // YOLOv8 outputs normalized coordinates [0-1]
+                        // Scale them to the actual canvas size
                         const boxX = x * canvas.width;
                         const boxY = y * canvas.height;
                         const boxWidth = width * canvas.width;
                         const boxHeight = height * canvas.height;
                         
-                        // Draw box
-                        ctx.strokeStyle = detection.class === 'ball_golf' ? '#FF0000' : '#00FF00';
-                        ctx.lineWidth = 2;
+                        updateDebugInfo(`Drawing box at (${boxX.toFixed(0)},${boxY.toFixed(0)}) with size ${boxWidth.toFixed(0)}x${boxHeight.toFixed(0)}`);
+                        
+                        // Make the box more visible
+                        ctx.strokeStyle = '#FF0000'; // Red color for golf ball
+                        ctx.lineWidth = 3; // Thicker line
                         ctx.beginPath();
                         ctx.rect(boxX, boxY, boxWidth, boxHeight);
                         ctx.stroke();
                         
-                        // Draw label
+                        // Draw label with confidence
                         const label = `${detection.class}: ${Math.round(detection.score * 100)}%`;
-                        ctx.fillStyle = detection.class === 'ball_golf' ? '#FF0000' : '#00FF00';
-                        ctx.fillRect(boxX, boxY, ctx.measureText(label).width + 10, 20);
+                        const textWidth = ctx.measureText(label).width;
+                        
+                        // Background for text
+                        ctx.fillStyle = '#FF0000';
+                        ctx.fillRect(boxX, boxY - 25, textWidth + 10, 25);
+                        
+                        // Text
                         ctx.fillStyle = '#FFFFFF';
-                        ctx.font = '16px Arial';
-                        ctx.fillText(label, boxX + 5, boxY + 15);
+                        ctx.font = 'bold 16px Arial';
+                        ctx.fillText(label, boxX + 5, boxY - 20);
                     }
                 }
                 
