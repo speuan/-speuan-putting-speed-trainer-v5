@@ -71,7 +71,7 @@ async function loadModel() {
         debugLog(`TensorFlow.js version: ${tf.version.tfjs}`, 'info');
         debugLog(`Backend: ${tf.getBackend()}`, 'info');
         
-        const modelUrl = './my_model_web_model 2/model.json';
+        const modelUrl = './my_model_web_model_5/model.json';
         debugLog(`Attempting to load model from: ${modelUrl}`, 'info');
         
         try {

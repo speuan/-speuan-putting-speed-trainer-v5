@@ -53,7 +53,7 @@ async function initDetectionModel() {
         }
         
         updateDebugInfo('Loading object detection model...');
-        const modelUrl = './my_model_web_model 2/model.json';
+        const modelUrl = './my_model_web_model_5/model.json';
         
         // Test if model.json is accessible
         try {
