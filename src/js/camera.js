@@ -438,12 +438,12 @@ async function runObjectDetection() {
             // Update status with detection results
             if (detections && detections.length > 0) {
                 const message = `Found ${detections.length} object(s): ` + 
-                    detections.map(d => `${d.class}(${Math.round(d.score*100)}%)`).join(', ');
+                    detections.map(d => `${d.class}(${Math.round(d.confidence*100)}%)`).join(', ');
                 detectionStatus.textContent = message;
                 updateDebugInfo(message);
                 
                 // Calculate ball speed if we have ball detections
-                if (detections.some(d => d.class === 'Ball')) {
+                if (detections.some(d => d.class === 'ball_golf')) {
                     updateBallSpeed(detections);
                 }
             } else {
@@ -473,7 +473,9 @@ async function runObjectDetection() {
 function updateBallSpeed(detections) {
     // This is a placeholder - in a real app, we would calculate speed
     // from multiple frames over time and use the calibrated pixel-to-cm ratio
-    const ballDetections = detections.filter(d => d.class === 'Ball');
+    const ballDetections = detections.filter(d => d.class === 'ball_golf');
+    
+    updateDebugInfo(`Found ${ballDetections.length} ball detections for speed calculation`);
     
     // For now, we'll just simulate a realistic speed
     let speed;

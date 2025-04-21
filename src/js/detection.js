@@ -727,8 +727,11 @@ function calculateIoU(box1, box2) {
  */
 function drawDetections(canvas, ctx, detections, originalWidth, originalHeight) {
     if (!canvas || !ctx || !detections) {
+        updateDebugInfo(`drawDetections: Missing required parameters: canvas=${!!canvas}, ctx=${!!ctx}, detections=${!!detections}`);
         return;
     }
+    
+    updateDebugInfo(`Drawing ${detections.length} detections on canvas size ${originalWidth}x${originalHeight}`);
     
     // Define colors for different classes
     const classColors = {
@@ -741,23 +744,30 @@ function drawDetections(canvas, ctx, detections, originalWidth, originalHeight) 
     
     // Draw each detection with its class color
     for (const detection of detections) {
-        // Extract values from detection (these are normalized 0-1)
-        const { x, y, w, h, confidence, class: className } = detection;
-        
-        // Get color for class or use default red
-        const color = classColors[className] || '#FF0000';
-        
-        // Convert normalized coordinates to canvas coordinates
-        const centerX = x * originalWidth;
-        const centerY = y * originalHeight;
-        const boxWidth = w * originalWidth;
-        const boxHeight = h * originalHeight;
-        
-        // Calculate top-left corner for drawing
-        const drawX = centerX - (boxWidth / 2);
-        const drawY = centerY - (boxHeight / 2);
-        
         try {
+            // Extract values from detection (these are normalized 0-1)
+            const { x, y, w, h, confidence, class: className } = detection;
+            
+            updateDebugInfo(`Drawing ${className} at (${x.toFixed(3)}, ${y.toFixed(3)}) size ${w.toFixed(3)}x${h.toFixed(3)}`);
+            
+            // Get color for class or use default red
+            const color = classColors[className] || '#FF0000';
+            
+            // Convert normalized coordinates to canvas coordinates
+            const centerX = x * originalWidth;
+            const centerY = y * originalHeight;
+            const boxWidth = w * originalWidth;
+            const boxHeight = h * originalHeight;
+            
+            updateDebugInfo(`Canvas coords: center(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
+            
+            // Calculate top-left corner for drawing
+            const drawX = centerX - (boxWidth / 2);
+            const drawY = centerY - (boxHeight / 2);
+            
+            // Debug coordinate conversions
+            updateDebugInfo(`Drawing box at (${drawX.toFixed(1)}, ${drawY.toFixed(1)}) with size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
+            
             // Draw bounding box with thicker stroke for visibility
             ctx.lineWidth = 4;
             ctx.strokeStyle = color;
@@ -810,6 +820,8 @@ function drawDetections(canvas, ctx, detections, originalWidth, originalHeight) 
     
     // Restore context state
     ctx.restore();
+    
+    updateDebugInfo(`Finished drawing all detections`);
 }
 
 // Export functions for use in other modules
