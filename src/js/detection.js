@@ -458,11 +458,15 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
                     updateDebugInfo(`Detection ${i+1}: ${d.class} (${Math.round(d.confidence*100)}%) at [${d.x.toFixed(2)}, ${d.y.toFixed(2)}] size [${d.w.toFixed(2)}, ${d.h.toFixed(2)}]`);
                 });
                 
-                // Draw the detections on the canvas
-                drawDetections(canvas, ctx, detections, originalWidth, originalHeight);
+                // Cluster overlapping detections to reduce duplicates
+                const clusteredDetections = clusterDetections(detections);
+                updateDebugInfo(`Clustered ${detections.length} detections into ${clusteredDetections.length} groups`);
+                
+                // Draw the clustered detections on the canvas
+                drawDetections(canvas, ctx, clusteredDetections, originalWidth, originalHeight);
                 
                 // Return the detections for further processing
-                return detections;
+                return clusteredDetections;
             } else {
                 updateDebugInfo('No valid detections found');
                 return [];
@@ -680,27 +684,62 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
 function clusterDetections(detections) {
     const clusters = [];
     
+    // Group detections by class first
+    const detectionsByClass = {};
+    
+    // Group by class
     for (const detection of detections) {
-        let added = false;
+        const className = detection.class;
+        if (!detectionsByClass[className]) {
+            detectionsByClass[className] = [];
+        }
+        detectionsByClass[className].push(detection);
+    }
+    
+    // Process each class separately
+    for (const className in detectionsByClass) {
+        const classDetections = detectionsByClass[className];
         
-        // Only cluster detections of the same class
-        for (const cluster of clusters) {
-            if (cluster.classIndex === detection.classIndex && 
-                calculateIoU(detection, cluster) > IOU_THRESHOLD) {
-                // Merge detection into cluster with weighted average
-                const totalWeight = cluster.confidence + detection.confidence;
-                cluster.x = (cluster.x * cluster.confidence + detection.x * detection.confidence) / totalWeight;
-                cluster.y = (cluster.y * cluster.confidence + detection.y * detection.confidence) / totalWeight;
-                cluster.w = (cluster.w * cluster.confidence + detection.w * detection.confidence) / totalWeight;
-                cluster.h = (cluster.h * cluster.confidence + detection.h * detection.confidence) / totalWeight;
-                cluster.confidence = Math.max(cluster.confidence, detection.confidence);
-                added = true;
-                break;
-            }
+        // Skip if only one detection for this class
+        if (classDetections.length <= 1) {
+            clusters.push(...classDetections);
+            continue;
         }
         
-        if (!added) {
-            clusters.push({...detection});
+        // Sort by confidence (highest first)
+        classDetections.sort((a, b) => b.confidence - a.confidence);
+        
+        const processed = new Array(classDetections.length).fill(false);
+        
+        // Process each detection
+        for (let i = 0; i < classDetections.length; i++) {
+            if (processed[i]) continue;
+            
+            const detection = classDetections[i];
+            const cluster = { ...detection };
+            processed[i] = true;
+            
+            // Find all overlapping detections with this one
+            for (let j = i + 1; j < classDetections.length; j++) {
+                if (processed[j]) continue;
+                
+                const otherDetection = classDetections[j];
+                
+                // Check if they overlap
+                if (calculateIoU(detection, otherDetection) > IOU_THRESHOLD) {
+                    // Mark as processed
+                    processed[j] = true;
+                    
+                    // Log the merger
+                    updateDebugInfo(`Merging detection with IoU > ${IOU_THRESHOLD}: (${detection.x.toFixed(2)},${detection.y.toFixed(2)}) and (${otherDetection.x.toFixed(2)},${otherDetection.y.toFixed(2)})`);
+                    
+                    // No need to merge, we keep the highest confidence one
+                    // which is already the first one due to our sorting
+                }
+            }
+            
+            // Add cluster to results
+            clusters.push(cluster);
         }
     }
     
