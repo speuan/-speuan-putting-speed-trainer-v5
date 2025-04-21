@@ -19,38 +19,6 @@
                 window.debugInfo.textContent = `App initialized at: ${new Date().toISOString()}\nUserAgent: ${navigator.userAgent}\nPlatform: ${navigator.platform}`;
             }
         });
-        
-        // Direct camera test function
-        function testCameraAccess() {
-            if (window.debugInfo) {
-                window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] Testing direct camera access...`;
-            }
-            
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("Camera API not available in this browser!");
-                if (window.debugInfo) {
-                    window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] Camera API not available!`;
-                }
-                return;
-            }
-            
-            // Request camera with minimal constraints
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(function(stream) {
-                    if (window.debugInfo) {
-                        window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] DIRECT TEST: Camera access SUCCESS!`;
-                    }
-                    // Stop the stream immediately
-                    stream.getTracks().forEach(track => track.stop());
-                    alert("Camera test successful! Access granted.");
-                })
-                .catch(function(err) {
-                    if (window.debugInfo) {
-                        window.debugInfo.textContent += `\n[${new Date().toISOString().substring(11, 19)}] DIRECT TEST: Camera error: ${err.name}: ${err.message}`;
-                    }
-                    alert("Camera test failed: " + err.message);
-                });
-        }
     </script>
 </head>
 <body>
@@ -67,16 +35,6 @@
                 <button id="capture-frame" disabled>Capture</button>
                 <button id="detect-objects" disabled>Detect Objects</button>
                 <button id="stop-camera" disabled>Stop Camera</button>
-            </div>
-            <div class="controls" style="margin-top: 0.5rem;">
-                <label for="camera-select" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">Select Camera:</label>
-                <select id="camera-select" style="display: block; margin-bottom: 0.5rem; padding: 0.5rem; width: 100%; font-size: 16px; border: 2px solid #3498db; border-radius: 4px;">
-                    <option value="">Default (Back) Camera</option>
-                    <option value="front">Front Camera</option>
-                    <option value="back">Back Camera</option>
-                </select>
-                <button id="test-camera" onclick="testCameraAccess()" style="background-color: #e74c3c;">Test Camera Access</button>
-                <button onclick="manualInitialize()" style="background-color: #2ecc71;">Manual Initialize</button>
             </div>
         </div>
         
@@ -102,7 +60,6 @@
 
     <!-- Add script loading verification -->
     <script>
-        // Check if scripts are loaded correctly
         function checkScriptLoading() {
             const timestamp = new Date().toISOString().substring(11, 19);
             if (window.debugInfo) {
@@ -132,92 +89,6 @@
                 } else {
                     window.debugInfo.textContent += `\n- app.js: MISSING!`;
                 }
-            }
-        }
-        
-        // Manual initialization of camera module
-        function manualInitialize() {
-            const timestamp = new Date().toISOString().substring(11, 19);
-            if (window.debugInfo) {
-                window.debugInfo.textContent += `\n[${timestamp}] Manual initialization requested`;
-            }
-            
-            // First check if the modules are loaded
-            if (typeof window.initCamera === 'function') {
-                if (window.debugInfo) {
-                    window.debugInfo.textContent += `\n[${timestamp}] Camera module is loaded, initializing...`;
-                }
-                
-                // Create a minimal app state
-                const appState = {
-                    isRecording: false,
-                    frameCount: 0,
-                    ballPositions: [],
-                    pixelToCmRatio: 1
-                };
-                
-                // Initialize camera with state
-                try {
-                    window.initCamera(appState);
-                    if (window.debugInfo) {
-                        window.debugInfo.textContent += `\n[${timestamp}] Camera initialization successful`;
-                    }
-                } catch (error) {
-                    if (window.debugInfo) {
-                        window.debugInfo.textContent += `\n[${timestamp}] Camera initialization failed: ${error.message}`;
-                    }
-                    alert("Camera initialization failed: " + error.message);
-                }
-            } else {
-                if (window.debugInfo) {
-                    window.debugInfo.textContent += `\n[${timestamp}] Camera module is not loaded yet`;
-                }
-                
-                // Try to reload the camera.js script directly
-                const script = document.createElement('script');
-                script.src = './src/js/camera.js';
-                script.onload = () => {
-                    if (window.debugInfo) {
-                        window.debugInfo.textContent += `\n[${timestamp}] Camera module reloaded`;
-                    }
-                    
-                    if (typeof window.initCamera === 'function') {
-                        // Create a minimal app state
-                        const appState = {
-                            isRecording: false,
-                            frameCount: 0,
-                            ballPositions: [],
-                            pixelToCmRatio: 1
-                        };
-                        
-                        // Initialize camera with state
-                        try {
-                            window.initCamera(appState);
-                            if (window.debugInfo) {
-                                window.debugInfo.textContent += `\n[${timestamp}] Camera initialization successful after reload`;
-                            }
-                        } catch (error) {
-                            if (window.debugInfo) {
-                                window.debugInfo.textContent += `\n[${timestamp}] Camera initialization failed after reload: ${error.message}`;
-                            }
-                            alert("Camera initialization failed after reload: " + error.message);
-                        }
-                    } else {
-                        if (window.debugInfo) {
-                            window.debugInfo.textContent += `\n[${timestamp}] Camera module still not available after reload`;
-                        }
-                        alert("Camera module could not be loaded. Please check your connection and try again.");
-                    }
-                };
-                
-                script.onerror = (error) => {
-                    if (window.debugInfo) {
-                        window.debugInfo.textContent += `\n[${timestamp}] Error reloading camera module: ${error}`;
-                    }
-                    alert("Error loading camera module: " + error);
-                };
-                
-                document.body.appendChild(script);
             }
         }
         
@@ -348,7 +219,6 @@
             const stopBtn = document.getElementById('stop-camera');
             const captureBtn = document.getElementById('capture-frame');
             const detectBtn = document.getElementById('detect-objects');
-            const cameraSelect = document.getElementById('camera-select');
             
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 alert("Camera API not available in this browser!");
@@ -359,38 +229,15 @@
             // Disable start button
             startBtn.disabled = true;
             
-            // Get selected camera option
-            const selectedOption = cameraSelect ? cameraSelect.value : '';
-            window.updateDebugInfo(`INLINE: Selected camera option: ${selectedOption}`);
-            
-            // Set up constraints based on selection
+            // Always use the back camera
             let constraints = {
                 audio: false,
-                video: {}
+                video: {
+                    facingMode: 'environment'  // Always use the back/environment camera
+                }
             };
             
-            // Handle different selection types
-            if (selectedOption === 'front') {
-                // Explicitly request front camera
-                constraints.video.facingMode = 'user';
-                window.updateDebugInfo('INLINE: Using front camera');
-            } 
-            else if (selectedOption === 'back') {
-                // Explicitly request back camera
-                constraints.video.facingMode = 'environment';
-                window.updateDebugInfo('INLINE: Using back camera');
-            }
-            else if (selectedOption) {
-                // Using specific device ID
-                constraints.video.deviceId = { exact: selectedOption };
-                window.updateDebugInfo(`INLINE: Using specific camera ID: ${selectedOption.substring(0,8)}...`);
-            }
-            else {
-                // Default to back camera
-                constraints.video.facingMode = 'environment';
-                window.updateDebugInfo('INLINE: Using default back camera');
-            }
-            
+            window.updateDebugInfo('INLINE: Using back camera by default');
             window.updateDebugInfo('INLINE: Camera constraints: ' + JSON.stringify(constraints));
             
             // Request camera
@@ -649,32 +496,15 @@
             window.updateDebugInfo(`INLINE: Ball speed: ${speed} m/s`);
         }
         
-        // Initialize automatically
-        window.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                window.updateDebugInfo('Auto-initializing inline camera module');
-                window.initCamera();
-            }, 1500);
-        });
-
-        // Window onload handler to enumerate cameras
+        // Window onload handler for initialization
         window.addEventListener('load', function() {
-            window.updateDebugInfo('INLINE: Page loaded, enumerating cameras...');
+            window.updateDebugInfo('INLINE: Page loaded');
             
-            // Get camera selector
-            const cameraSelect = document.getElementById('camera-select');
-            
-            // Add event listener for camera switching
-            if (cameraSelect) {
-                cameraSelect.addEventListener('change', () => {
-                    window.updateDebugInfo('INLINE: Camera selection changed to: ' + cameraSelect.value);
-                    if (window.cameraStream) {
-                        // If camera is active, restart it with new device
-                        window.stopCamera();
-                        window.startCamera();
-                    }
-                });
-            }
+            // Start camera initialization process
+            setTimeout(() => {
+                window.updateDebugInfo('INLINE: Auto-initializing camera');
+                window.initCamera();
+            }, 1000);
         });
     </script>
 </body>
