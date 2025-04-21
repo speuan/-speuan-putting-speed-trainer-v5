@@ -449,18 +449,28 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
             }
             
             // Step 3: Process the standardized predictions into detections
-            const detections = processDetections(standardizedPreds, threshold);
+            // First process for ball detections with normal threshold
+            const ballDetections = processDetections(standardizedPreds, threshold, ['ball_golf']);
+            updateDebugInfo(`Processed ${ballDetections.length} ball detections with threshold ${threshold}`);
+            
+            // Then process for coin detections with a lower threshold
+            const coinThreshold = Math.max(0.1, threshold * 0.5); // Lower threshold for coins
+            const coinDetections = processDetections(standardizedPreds, coinThreshold, ['coin']);
+            updateDebugInfo(`Processed ${coinDetections.length} coin detections with lower threshold ${coinThreshold}`);
+            
+            // Combine all detections
+            const allDetections = [...ballDetections, ...coinDetections];
             
             // Only proceed if we have detections
-            if (detections && detections.length > 0) {
-                updateDebugInfo(`Processed ${detections.length} valid detections`);
-                detections.forEach((d, i) => {
+            if (allDetections.length > 0) {
+                updateDebugInfo(`Processed ${allDetections.length} total detections (${ballDetections.length} balls, ${coinDetections.length} coins)`);
+                allDetections.forEach((d, i) => {
                     updateDebugInfo(`Detection ${i+1}: ${d.class} (${Math.round(d.confidence*100)}%) at [${d.x.toFixed(2)}, ${d.y.toFixed(2)}] size [${d.w.toFixed(2)}, ${d.h.toFixed(2)}]`);
                 });
                 
                 // Cluster overlapping detections to reduce duplicates
-                const clusteredDetections = clusterDetections(detections);
-                updateDebugInfo(`Clustered ${detections.length} detections into ${clusteredDetections.length} groups`);
+                const clusteredDetections = clusterDetections(allDetections);
+                updateDebugInfo(`Clustered ${allDetections.length} detections into ${clusteredDetections.length} groups`);
                 
                 // Draw the clustered detections on the canvas
                 drawDetections(canvas, ctx, clusteredDetections, originalWidth, originalHeight);
@@ -493,11 +503,14 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
  * Process raw model output into a usable detection format
  * @param {Array} predictions - Raw predictions from YOLO model
  * @param {number} confidenceThreshold - Minimum confidence threshold
+ * @param {Array} allowedClasses - Array of class names to include (empty array means include all)
  * @return {Array} Array of detection objects {x,y,w,h,class,confidence}
  */
-function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
+function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE, allowedClasses = []) {
     try {
-        updateDebugInfo(`Processing detections with threshold: ${confidenceThreshold}`);
+        // Log which classes we're filtering for
+        const classesStr = allowedClasses.length > 0 ? allowedClasses.join(', ') : 'all';
+        updateDebugInfo(`Processing detections with threshold: ${confidenceThreshold}, classes: ${classesStr}`);
         
         // Detection statistics
         const detectionStats = {};
@@ -642,8 +655,11 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE) {
                 updateDebugInfo(`Low confidence detection: ${className} (${(confidence*100).toFixed(1)}%)`);
             }
             
-            // Filter by confidence threshold
-            if (confidence >= confidenceThreshold) {
+            // Check if class is allowed (if allowedClasses is not empty)
+            const isClassAllowed = allowedClasses.length === 0 || allowedClasses.includes(className);
+            
+            // Filter by confidence threshold and allowed classes
+            if (confidence >= confidenceThreshold && isClassAllowed) {
                 detections.push({
                     x: xs[i],         // Center X (relative 0-1)
                     y: ys[i],         // Center Y (relative 0-1)
