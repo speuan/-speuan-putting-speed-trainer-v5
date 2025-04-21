@@ -352,31 +352,42 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
                 const confs = Array.from(arrayPreds[0][4]);
                 const classes = Array.from(arrayPreds[0][5]).map(c => Math.round(c));
                 
-                // Log sample of data for verification
-                updateDebugInfo(`Data samples - x:${xs[0].toFixed(2)}, y:${ys[0].toFixed(2)}, w:${ws[0].toFixed(2)}, h:${hs[0].toFixed(2)}, conf:${confs[0].toFixed(2)}, class:${classes[0]}`);
+                // Check if coordinates are already normalized (0-1) or are absolute values
+                const maxX = Math.max(...xs);
+                const maxY = Math.max(...ys);
                 
-                standardizedPreds = [xs, ys, ws, hs, confs, classes];
-                updateDebugInfo(`Converted transposed format to standard 6-array format with ${xs.length} detections`);
+                // If coordinates are absolute (typical for YOLOv8), normalize them
+                let normalizedXs = xs;
+                let normalizedYs = ys;
+                let normalizedWs = ws;
+                let normalizedHs = hs;
+                
+                if (maxX > 1.0 || maxY > 1.0) {
+                    updateDebugInfo(`Coordinates appear to be absolute values, normalizing to 0-1 range (maxX=${maxX.toFixed(1)}, maxY=${maxY.toFixed(1)})`);
+                    
+                    // Normalize to 0-1 range assuming MODEL_INPUT_SIZE (typically 640)
+                    normalizedXs = xs.map(x => x / MODEL_INPUT_SIZE);
+                    normalizedYs = ys.map(y => y / MODEL_INPUT_SIZE);
+                    normalizedWs = ws.map(w => w / MODEL_INPUT_SIZE);
+                    normalizedHs = hs.map(h => h / MODEL_INPUT_SIZE);
+                    
+                    updateDebugInfo(`Normalized coordinates - x range: ${Math.min(...normalizedXs).toFixed(3)}-${Math.max(...normalizedXs).toFixed(3)}, y range: ${Math.min(...normalizedYs).toFixed(3)}-${Math.max(...normalizedYs).toFixed(3)}`);
+                }
+                
+                // Log sample of data for verification
+                updateDebugInfo(`Data samples (normalized) - x:${normalizedXs[0].toFixed(3)}, y:${normalizedYs[0].toFixed(3)}, w:${normalizedWs[0].toFixed(3)}, h:${normalizedHs[0].toFixed(3)}, conf:${confs[0].toFixed(3)}, class:${classes[0]}`);
+                
+                standardizedPreds = [normalizedXs, normalizedYs, normalizedWs, normalizedHs, confs, classes];
+                updateDebugInfo(`Converted transposed format to standard 6-array format with ${normalizedXs.length} detections`);
             } else if (Array.isArray(arrayPreds) && arrayPreds.length === 1 && Array.isArray(arrayPreds[0]) && arrayPreds[0].length > 0) {
                 // This is likely the "combined" output format where all detections are in one tensor
                 // Each row is [x, y, w, h, conf, class_0, class_1, ...]
-                updateDebugInfo(`Detected combined detection format with ${arrayPreds[0].length} rows`);
-                
-                // Sample a few rows to inspect
-                updateDebugInfo(`Example row 0: ${arrayPreds[0][0].slice(0, Math.min(10, arrayPreds[0][0].length)).join(', ')}...`);
-                
-                // Convert to standard 6-array format (x,y,w,h,conf,class_idx)
-                const numRows = arrayPreds[0].length;
-                const numCols = arrayPreds[0][0].length;
-                
-                // Process this format - we expect each detection to have:
-                // [x, y, w, h, confidence, class_0_score, class_1_score]
                 // with 7 or more columns
-                if (numCols >= 7) {
+                if (arrayPreds[0].length >= 7) {
                     // Columns as expected, reshape to standard format
                     const xs = [], ys = [], ws = [], hs = [], confs = [], classes = [];
                     
-                    for (let i = 0; i < numRows; i++) {
+                    for (let i = 0; i < arrayPreds[0].length; i++) {
                         const row = arrayPreds[0][i];
                         xs.push(row[0]); // x center
                         ys.push(row[1]); // y center
@@ -408,9 +419,23 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
                     }
                     
                     standardizedPreds = [xs, ys, ws, hs, confs, classes];
-                    updateDebugInfo(`Converted to standard 6-array format with ${numRows} detections`);
+                    updateDebugInfo(`Converted to standard 6-array format with ${xs.length} detections`);
+                    
+                    // Check if coordinates need normalization
+                    const maxX = Math.max(...xs);
+                    const maxY = Math.max(...ys);
+                    
+                    if (maxX > 1.0 || maxY > 1.0) {
+                        updateDebugInfo(`Combined format: Coordinates appear to be absolute, normalizing (maxX=${maxX.toFixed(1)}, maxY=${maxY.toFixed(1)})`);
+                        
+                        // Normalize to 0-1 range
+                        standardizedPreds[0] = xs.map(x => x / MODEL_INPUT_SIZE);
+                        standardizedPreds[1] = ys.map(y => y / MODEL_INPUT_SIZE);
+                        standardizedPreds[2] = ws.map(w => w / MODEL_INPUT_SIZE);
+                        standardizedPreds[3] = hs.map(h => h / MODEL_INPUT_SIZE);
+                    }
                 } else {
-                    updateDebugInfo(`Unexpected combined format with only ${numCols} columns, treating as raw output`);
+                    updateDebugInfo(`Unexpected combined format with only ${arrayPreds[0].length} columns, treating as raw output`);
                     standardizedPreds = arrayPreds;
                 }
             } else if (Array.isArray(arrayPreds) && arrayPreds.length === 6) {
@@ -748,16 +773,27 @@ function drawDetections(canvas, ctx, detections, originalWidth, originalHeight) 
             // Extract values from detection (these are normalized 0-1)
             const { x, y, w, h, confidence, class: className } = detection;
             
-            updateDebugInfo(`Drawing ${className} at (${x.toFixed(3)}, ${y.toFixed(3)}) size ${w.toFixed(3)}x${h.toFixed(3)}`);
+            // Validate coordinates are within 0-1 range
+            if (x < 0 || x > 1 || y < 0 || y > 1 || w < 0 || w > 1 || h < 0 || h > 1) {
+                updateDebugInfo(`Warning: Detection has coordinates outside 0-1 range: x=${x.toFixed(3)}, y=${y.toFixed(3)}, w=${w.toFixed(3)}, h=${h.toFixed(3)}`);
+            }
+            
+            // Clip coordinates to 0-1 range to avoid drawing outside canvas
+            const xClipped = Math.max(0, Math.min(1, x));
+            const yClipped = Math.max(0, Math.min(1, y));
+            const wClipped = Math.max(0.001, Math.min(1, w));
+            const hClipped = Math.max(0.001, Math.min(1, h));
+            
+            updateDebugInfo(`Drawing ${className} at (${xClipped.toFixed(3)}, ${yClipped.toFixed(3)}) size ${wClipped.toFixed(3)}x${hClipped.toFixed(3)}`);
             
             // Get color for class or use default red
             const color = classColors[className] || '#FF0000';
             
             // Convert normalized coordinates to canvas coordinates
-            const centerX = x * originalWidth;
-            const centerY = y * originalHeight;
-            const boxWidth = w * originalWidth;
-            const boxHeight = h * originalHeight;
+            const centerX = xClipped * originalWidth;
+            const centerY = yClipped * originalHeight;
+            const boxWidth = wClipped * originalWidth;
+            const boxHeight = hClipped * originalHeight;
             
             updateDebugInfo(`Canvas coords: center(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size ${boxWidth.toFixed(1)}x${boxHeight.toFixed(1)}`);
             
