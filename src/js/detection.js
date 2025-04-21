@@ -454,7 +454,7 @@ async function detectObjects(canvas, ctx, threshold = MIN_CONFIDENCE) {
             updateDebugInfo(`Processed ${ballDetections.length} ball detections with threshold ${threshold}`);
             
             // Then process for coin detections with a lower threshold
-            const coinThreshold = Math.max(0.1, threshold * 0.5); // Lower threshold for coins
+            const coinThreshold = Math.max(0.1, threshold * 0.3); // Lower threshold for coins (30% of ball threshold)
             const coinDetections = processDetections(standardizedPreds, coinThreshold, ['coin']);
             updateDebugInfo(`Processed ${coinDetections.length} coin detections with lower threshold ${coinThreshold}`);
             
@@ -674,9 +674,22 @@ function processDetections(predictions, confidenceThreshold = MIN_CONFIDENCE, al
         
         // Log detection statistics
         updateDebugInfo(`Detection statistics:`);
+        
+        // Ensure all labels have entries in detection stats
+        for (const label of labels) {
+            if (!detectionStats[label]) {
+                detectionStats[label] = {
+                    count: 0,
+                    bestConfidence: 0
+                };
+            }
+        }
+        
+        // Display statistics for all classes
         for (const className in detectionStats) {
             updateDebugInfo(`  ${className}: ${detectionStats[className].count} detections, best confidence: ${(detectionStats[className].bestConfidence*100).toFixed(1)}%`);
         }
+        
         updateDebugInfo(`Total raw detections: ${totalDetections}, valid detections: ${validDetections}`);
         updateDebugInfo(`Best overall confidence: ${(bestConfidence*100).toFixed(1)}%`);
         

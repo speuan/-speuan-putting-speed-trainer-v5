@@ -425,7 +425,7 @@ async function runObjectDetection() {
     detectionStatus.textContent = 'Running...';
     updateDebugInfo('Starting object detection...');
     
-    // Run detection with 50% confidence threshold
+    // Run detection with 60% confidence threshold
     try {
         if (typeof detectObjects === 'function') {
             // Disable button during detection
@@ -433,7 +433,7 @@ async function runObjectDetection() {
             
             // Run detection
             updateDebugInfo('Calling detectObjects...');
-            const detections = await detectObjects(canvas, context, 0.5);
+            const detections = await detectObjects(canvas, context, 0.6);
             
             // Update status with detection results
             if (detections && detections.length > 0) {
@@ -448,7 +448,7 @@ async function runObjectDetection() {
                 }
             } else {
                 detectionStatus.textContent = 'No objects detected';
-                updateDebugInfo('No objects detected above 50% threshold');
+                updateDebugInfo('No objects detected above 60% threshold');
                 document.getElementById('ball-speed').textContent = '0';
             }
             
