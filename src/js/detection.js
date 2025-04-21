@@ -7,7 +7,7 @@ let model = null;
 let isModelLoading = false;
 let labels = ['ball_golf', 'coin']; // Labels for our detection classes
 const MODEL_INPUT_SIZE = 640; // Model expects 640x640 input
-const MIN_CONFIDENCE = 0.2; // Lower threshold to 20% to catch more detections
+const MIN_CONFIDENCE = 0.6; // Higher threshold of 60% for ball detections
 const DEBUG_MIN_CONFIDENCE = 0.1; // Lower threshold for debugging output
 const IOU_THRESHOLD = 0.3; // Intersection over Union threshold for clustering
 
