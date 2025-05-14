@@ -35,17 +35,21 @@ main {
 /* Camera Container */
 .camera-container {
     width: 100%;
-    max-width: 600px;
+    max-width: 500px;
     margin: 0 auto;
     position: relative;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    aspect-ratio: 16/9;
+    background-color: #000;
 }
 
-video, canvas {
+video, canvas#display-canvas {
     width: 100%;
+    height: 100%;
     display: block;
+    object-fit: cover;
 }
 
 #display-canvas {
@@ -84,7 +88,7 @@ button:disabled {
 /* Results Container */
 .results-container {
     width: 100%;
-    max-width: 600px;
+    max-width: 500px;
     margin: 1rem auto;
     padding: 1rem;
     background-color: white;
@@ -111,7 +115,26 @@ button:disabled {
     height: 150px;
 }
 
-#new-putt-button {
+/* Captured Image Container */
+.captured-image {
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+    aspect-ratio: 16/9;
+    background-color: #f9f9f9;
+}
+
+#captured-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+}
+
+#new-capture-button {
     margin-top: 1rem;
 }
 
