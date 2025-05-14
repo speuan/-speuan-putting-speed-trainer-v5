@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const startCameraBtn = document.getElementById('start-camera');
     const captureBtn = document.getElementById('capture-button');
     const newCaptureBtn = document.getElementById('new-capture-button');
+    const backToLiveBtn = document.getElementById('back-to-live-button');
     
     // Initialize event listeners
     startCameraBtn.addEventListener('click', async () => {
@@ -34,8 +35,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     newCaptureBtn.addEventListener('click', () => {
-        // Reset the UI and camera controller
+        // Reset the UI and camera controller to take a new capture
         uiController.resetUI();
         cameraController.reset();
+    });
+    
+    backToLiveBtn.addEventListener('click', () => {
+        // Just go back to live view without resetting the captured frame
+        uiController.resetUI();
+        cameraController.startVideoDisplay(); // Resume video display
     });
 }); 

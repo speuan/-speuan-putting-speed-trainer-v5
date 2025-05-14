@@ -134,8 +134,20 @@ button:disabled {
     object-fit: contain;
 }
 
-#new-capture-button {
+/* Results Controls */
+.results-controls {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
     margin-top: 1rem;
+}
+
+#back-to-live-button {
+    background-color: #2196F3; /* Different color to distinguish from other button */
+}
+
+#back-to-live-button:hover {
+    background-color: #0b7dda;
 }
 
 footer {
@@ -152,6 +164,11 @@ footer {
 /* Media Queries */
 @media (max-width: 768px) {
     .camera-controls {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .results-controls {
         flex-direction: column;
         gap: 0.5rem;
     }
