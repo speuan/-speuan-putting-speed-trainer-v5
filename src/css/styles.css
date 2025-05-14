@@ -107,6 +107,19 @@ button:disabled {
     background-color: #0b7dda;
 }
 
+#analyze-button {
+    background-color: #FF9800; /* Orange for analyze button */
+}
+
+#analyze-button:hover {
+    background-color: #F57C00;
+}
+
+#analyze-button:disabled {
+    background-color: #FFB74D;
+    cursor: progress;
+}
+
 footer {
     text-align: center;
     padding: 1rem;
@@ -116,6 +129,40 @@ footer {
     position: fixed;
     bottom: 0;
     width: 100%;
+}
+
+/* Detection Overlay */
+.detection-box {
+    position: absolute;
+    border: 3px solid;
+    pointer-events: none;
+}
+
+.detection-box.ball {
+    border-color: #FF0000;
+}
+
+.detection-box.coin {
+    border-color: #00FF00;
+}
+
+.detection-label {
+    position: absolute;
+    top: -25px;
+    left: 0;
+    padding: 2px 6px;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.detection-label.ball {
+    background-color: #FF0000;
+}
+
+.detection-label.coin {
+    background-color: #00FF00;
 }
 
 /* Media Queries */

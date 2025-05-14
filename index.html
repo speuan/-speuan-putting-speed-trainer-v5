@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="src/css/styles.css">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="assets/icons/favicon.ico" type="image/x-icon">
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0"></script>
 </head>
 <body>
     <header>
@@ -25,6 +27,7 @@
         <div class="camera-controls">
             <button id="start-camera">Start Camera</button>
             <button id="capture-button" disabled>Capture Image</button>
+            <button id="analyze-button" style="display:none;">Analyze Capture</button>
             <button id="back-to-live-button" style="display:none;">Back to Live Feed</button>
             <button id="new-capture-button" style="display:none;">New Capture</button>
         </div>

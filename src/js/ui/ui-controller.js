@@ -13,11 +13,13 @@ class UIController {
         this.startCameraButton = document.getElementById('start-camera');
         this.backToLiveButton = document.getElementById('back-to-live-button');
         this.newCaptureButton = document.getElementById('new-capture-button');
+        this.analyzeButton = document.getElementById('analyze-button');
         
         this.displayContext = this.displayCanvas.getContext('2d');
         
         // Flag to track if we're showing a captured image
         this.isShowingCapturedImage = false;
+        this.isShowingAnalyzedImage = false;
         
         // Log elements to verify they're found
         console.log('Display canvas:', this.displayCanvas);
@@ -25,6 +27,7 @@ class UIController {
         console.log('Start camera button:', this.startCameraButton);
         console.log('Back to live button:', this.backToLiveButton);
         console.log('New capture button:', this.newCaptureButton);
+        console.log('Analyze button:', this.analyzeButton);
     }
     
     /**
@@ -41,8 +44,22 @@ class UIController {
         this.captureButton.style.display = 'none';
         this.backToLiveButton.style.display = 'inline-block';
         this.newCaptureButton.style.display = 'inline-block';
+        this.analyzeButton.style.display = 'inline-block';
         
         this.isShowingCapturedImage = true;
+        this.isShowingAnalyzedImage = false;
+    }
+    
+    /**
+     * Show the analyzed image with detection results
+     */
+    showAnalyzedImage() {
+        console.log('Showing analyzed image');
+        
+        // Hide the analyze button after analysis
+        this.analyzeButton.style.display = 'none';
+        
+        this.isShowingAnalyzedImage = true;
     }
     
     /**
@@ -58,7 +75,9 @@ class UIController {
         this.captureButton.style.display = 'inline-block';
         this.backToLiveButton.style.display = 'none';
         this.newCaptureButton.style.display = 'none';
+        this.analyzeButton.style.display = 'none';
         
         this.isShowingCapturedImage = false;
+        this.isShowingAnalyzedImage = false;
     }
 } 
