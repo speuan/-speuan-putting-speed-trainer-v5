@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Capture a single frame
         const frame = cameraController.captureFrame();
         
-        // Show the captured image in the results UI
+        // Show the captured image in the display canvas
         uiController.showCapturedImage(frame);
     });
     

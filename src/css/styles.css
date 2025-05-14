@@ -63,6 +63,8 @@ video, canvas#display-canvas {
     justify-content: space-around;
     padding: 1rem;
     background-color: #fff;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 button {
@@ -165,11 +167,5 @@ footer {
 @media (max-width: 768px) {
     .camera-controls {
         flex-direction: column;
-        gap: 0.5rem;
-    }
-    
-    .results-controls {
-        flex-direction: column;
-        gap: 0.5rem;
     }
 } 
