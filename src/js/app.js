@@ -6,6 +6,35 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded and parsed');
     
+    // Debug mode flag
+    const debugMode = true; // Set to true to enable visual debugging
+    
+    // Create debug elements if in debug mode
+    if (debugMode) {
+        const debugContainer = document.createElement('div');
+        debugContainer.style.position = 'fixed';
+        debugContainer.style.top = '10px';
+        debugContainer.style.right = '10px';
+        debugContainer.style.zIndex = '1000';
+        debugContainer.style.width = '200px'; // Small debug view
+        debugContainer.style.height = '200px';
+        debugContainer.style.border = '2px solid red';
+        debugContainer.style.overflow = 'hidden';
+        debugContainer.id = 'debug-container';
+        
+        const debugCanvas = document.createElement('canvas');
+        debugCanvas.id = 'debug-canvas';
+        debugCanvas.width = 640;
+        debugCanvas.height = 640;
+        debugCanvas.style.width = '100%';
+        debugCanvas.style.height = '100%';
+        
+        debugContainer.appendChild(debugCanvas);
+        document.body.appendChild(debugContainer);
+        
+        console.log('Debug mode enabled: Visual debugging elements created');
+    }
+    
     // Initialize controllers
     const cameraController = new CameraController();
     const uiController = new UIController();
@@ -87,6 +116,64 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn('Canvas appears to be empty');
                 alert('The image appears to be empty. Please capture an image first.');
                 return;
+            }
+            
+            // Create a preprocessed version of the image for debugging
+            if (debugMode) {
+                // Create a temporary canvas to visualize preprocessing
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = 640;
+                tempCanvas.height = 640;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Fill with background color to visualize padding
+                tempCtx.fillStyle = 'rgba(0, 0, 255, 0.3)';  // Semi-transparent blue background
+                tempCtx.fillRect(0, 0, 640, 640);
+                
+                // Draw with aspect ratio preservation
+                const imgAspectRatio = displayCanvas.width / displayCanvas.height;
+                let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
+                
+                if (imgAspectRatio > 1) {
+                    // Image is wider than tall
+                    renderWidth = 640;
+                    renderHeight = 640 / imgAspectRatio;
+                    offsetY = (640 - renderHeight) / 2;
+                } else {
+                    // Image is taller than wide or square
+                    renderHeight = 640;
+                    renderWidth = 640 * imgAspectRatio;
+                    offsetX = (640 - renderWidth) / 2;
+                }
+                
+                // Draw image
+                tempCtx.drawImage(
+                    displayCanvas,
+                    offsetX,
+                    offsetY,
+                    renderWidth,
+                    renderHeight
+                );
+                
+                // Draw bounding box showing the actual image area
+                tempCtx.strokeStyle = 'red';
+                tempCtx.lineWidth = 2;
+                tempCtx.strokeRect(offsetX, offsetY, renderWidth, renderHeight);
+                
+                // Add some text information
+                tempCtx.fillStyle = 'white';
+                tempCtx.font = '14px Arial';
+                tempCtx.fillText(`Original: ${displayCanvas.width}x${displayCanvas.height}`, 10, 20);
+                tempCtx.fillText(`Rendered: ${Math.round(renderWidth)}x${Math.round(renderHeight)}`, 10, 40);
+                tempCtx.fillText(`Offset: (${Math.round(offsetX)},${Math.round(offsetY)})`, 10, 60);
+                
+                // Show in debug canvas
+                const debugCanvas = document.getElementById('debug-canvas');
+                if (debugCanvas) {
+                    const debugCtx = debugCanvas.getContext('2d');
+                    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+                    debugCtx.drawImage(tempCanvas, 0, 0);
+                }
             }
             
             // Perform object detection

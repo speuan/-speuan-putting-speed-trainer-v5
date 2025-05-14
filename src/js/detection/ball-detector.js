@@ -8,7 +8,7 @@ class BallDetector {
         this.model = null;
         this.isModelLoaded = false;
         this.modelLoading = false;
-        this.detectionThreshold = 0.2; // Lower threshold for better detection
+        this.detectionThreshold = 0.15; // Lower threshold even more for better detection
         this.modelPath = './my_model_web_model_5/model.json';
         this.classNames = {
             0: 'ball_golf',
@@ -18,6 +18,7 @@ class BallDetector {
             'ball_golf': '#FF0000', // Red for golf balls
             'coin': '#00FF00'       // Green for coins
         };
+        this.inputSize = 640; // YOLO model input size
     }
     
     /**
@@ -35,7 +36,7 @@ class BallDetector {
             this.model = await tf.loadGraphModel(this.modelPath);
             
             // Warm up the model by running a prediction on a dummy tensor
-            const dummyInput = tf.zeros([1, 640, 640, 3]);
+            const dummyInput = tf.zeros([1, this.inputSize, this.inputSize, 3]);
             const warmupResult = await this.model.executeAsync(dummyInput);
             
             // Dispose of the tensors to free memory
@@ -79,17 +80,63 @@ class BallDetector {
         try {
             console.log('Starting object detection...');
             
+            // Create a temporary canvas to properly resize and format the image
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = this.inputSize;
+            tempCanvas.height = this.inputSize;
+            const tempCtx = tempCanvas.getContext('2d');
+            
             // Log image dimensions to help with debugging
-            console.log('Image dimensions:', {
+            console.log('Original image dimensions:', {
                 width: imageElement.width,
                 height: imageElement.height
             });
             
-            // Create a tensor from the image (resized to 640x640 which is what the model expects)
+            // Draw the image on the temporary canvas with proper dimension handling
+            // This preserves aspect ratio by fitting the image within the input size dimensions
+            const imgAspectRatio = imageElement.width / imageElement.height;
+            let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
+            
+            if (imgAspectRatio > 1) {
+                // Image is wider than tall
+                renderWidth = this.inputSize;
+                renderHeight = this.inputSize / imgAspectRatio;
+                offsetY = (this.inputSize - renderHeight) / 2;
+            } else {
+                // Image is taller than wide or square
+                renderHeight = this.inputSize;
+                renderWidth = this.inputSize * imgAspectRatio;
+                offsetX = (this.inputSize - renderWidth) / 2;
+            }
+            
+            // Clear the canvas first
+            tempCtx.fillStyle = '#000000';
+            tempCtx.fillRect(0, 0, this.inputSize, this.inputSize);
+            
+            // Draw the image centered with proper aspect ratio
+            tempCtx.drawImage(
+                imageElement,
+                offsetX,
+                offsetY,
+                renderWidth,
+                renderHeight
+            );
+            
+            // Visualize the processed image for debugging (uncomment if needed)
+            // document.body.appendChild(tempCanvas);
+            
+            console.log('Processed image for model input:', {
+                inputSize: this.inputSize,
+                renderWidth,
+                renderHeight,
+                offsetX,
+                offsetY
+            });
+            
+            // Create a tensor from the properly formatted image
             const imageTensor = tf.tidy(() => {
-                // Normalize to [0,1] and ensure proper dimensions
-                return tf.browser.fromPixels(imageElement)
-                    .resizeBilinear([640, 640])
+                // Convert the canvas to a tensor and normalize to [0,1]
+                return tf.browser.fromPixels(tempCanvas)
                     .div(255.0)
                     .expandDims(0);
             });
@@ -109,7 +156,7 @@ class BallDetector {
             }
             
             // Process the result to get detections
-            let detections = await this.processOutput(result, imageElement.width, imageElement.height);
+            let detections = await this.processOutput(result, imageElement.width, imageElement.height, offsetX, offsetY, renderWidth, renderHeight);
             
             console.log('Detections found:', detections);
             
@@ -120,6 +167,9 @@ class BallDetector {
             } else {
                 result.dispose();
             }
+            
+            // Clean up the temporary canvas
+            tempCanvas.remove();
             
             return detections;
         } catch (error) {
@@ -133,31 +183,21 @@ class BallDetector {
      * @param {tf.Tensor|Array<tf.Tensor>} output - Model output
      * @param {number} originalWidth - Original image width
      * @param {number} originalHeight - Original image height
+     * @param {number} offsetX - X offset used when resizing image
+     * @param {number} offsetY - Y offset used when resizing image
+     * @param {number} renderWidth - Width of the rendered image in the model input
+     * @param {number} renderHeight - Height of the rendered image in the model input
      * @returns {Array} - Array of detection objects
      */
-    async processOutput(output, originalWidth, originalHeight) {
-        // For YOLOv8 models, the output format depends on the exported model
-        // Let's try to determine the format and adapt accordingly
-        
-        let boxesArray;
-        let scoresArray;
-        let classesArray;
-        
+    async processOutput(output, originalWidth, originalHeight, offsetX, offsetY, renderWidth, renderHeight) {
         try {
             if (Array.isArray(output)) {
-                // If we have multiple tensors, we need to figure out which is which
-                // This is model-specific, but let's try a common pattern for YOLO exports
-                
                 // Log tensor shapes to debug
                 output.forEach((t, i) => {
                     console.log(`Output tensor ${i} shape:`, t.shape);
                 });
                 
                 if (output.length >= 1) {
-                    // For YOLOv8 exported with TF format, there's often a single tensor with shape [1, n, 85]
-                    // where n is the number of detections and 85 = 4 (box) + 1 (confidence) + 80 (classes)
-                    // Or [1, n, m] where m = 4 (box) + 1 (confidence) + num_classes
-                    
                     // Get the first tensor as array (likely contains all we need)
                     const predictions = await output[0].array();
                     console.log('Processing predictions array of shape:', predictions.length, 'x', predictions[0].length);
@@ -193,36 +233,54 @@ class BallDetector {
                         // Check if we have a valid detection
                         // Use just the object confidence if class scores are not reliable
                         if (detectedClass in this.classNames) {
-                            // Convert normalized box coordinates to pixel coordinates
-                            // YOLO gives center, width, height - convert to top-left x,y
+                            // Convert normalized box coordinates (0-1) to pixel coordinates in the model input space
                             const halfW = boxWidth / 2;
                             const halfH = boxHeight / 2;
-                            const xMin = (boxX - halfW) * 640; // Normalized to model input size
-                            const yMin = (boxY - halfH) * 640;
-                            const width = boxWidth * 640;
-                            const height = boxHeight * 640;
                             
-                            // Scale to original image size
-                            const xScale = originalWidth / 640;
-                            const yScale = originalHeight / 640;
+                            // Get coordinates in the model input space (before applying offsets)
+                            let modelX = (boxX - halfW) * this.inputSize;
+                            let modelY = (boxY - halfH) * this.inputSize;
+                            let modelWidth = boxWidth * this.inputSize;
+                            let modelHeight = boxHeight * this.inputSize;
+                            
+                            // Adjust for the offsets added during image preprocessing
+                            // This converts from model input space to the actual image space within the padded input
+                            modelX = modelX - offsetX;
+                            modelY = modelY - offsetY;
+                            
+                            // Skip detections that fall outside the valid image area (in padding)
+                            if (modelX < -modelWidth/2 || modelY < -modelHeight/2 || 
+                                modelX > renderWidth + modelWidth/2 || modelY > renderHeight + modelHeight/2) {
+                                continue;
+                            }
+                            
+                            // Scale from the rendered image size to original image size
+                            const xScale = originalWidth / renderWidth;
+                            const yScale = originalHeight / renderHeight;
+                            
+                            // Calculate final coordinates in the original image
+                            const finalX = modelX * xScale;
+                            const finalY = modelY * yScale;
+                            const finalWidth = modelWidth * xScale;
+                            const finalHeight = modelHeight * yScale;
                             
                             // Add to detections
                             detections.push({
                                 class: this.classNames[detectedClass],
                                 confidence: confidence * maxClassScore, // Combined score
                                 bbox: {
-                                    x: xMin * xScale,
-                                    y: yMin * yScale,
-                                    width: width * xScale,
-                                    height: height * yScale
+                                    x: Math.max(0, finalX),
+                                    y: Math.max(0, finalY),
+                                    width: finalWidth,
+                                    height: finalHeight
                                 }
                             });
                             
                             console.log(`Detection ${i}: class=${this.classNames[detectedClass]}, conf=${confidence * maxClassScore}, bbox=`, {
-                                x: xMin * xScale,
-                                y: yMin * yScale,
-                                width: width * xScale,
-                                height: height * yScale
+                                x: finalX,
+                                y: finalY,
+                                width: finalWidth,
+                                height: finalHeight
                             });
                         }
                     }
