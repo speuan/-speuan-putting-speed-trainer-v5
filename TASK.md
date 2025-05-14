@@ -2,7 +2,7 @@
 
 ## Current Tasks
 - [ ] Implement basic camera functionality
-- [ ] Implement frame capture from video
+- [x] Implement frame capture from video
 - [ ] Add basic object detection (using YOLO model)
 - [ ] Implement simple speed calculation (simulated)
 - [ ] Implement continuous frame capture from video
@@ -22,6 +22,7 @@
 - [x] Add PWA capabilities (manifest, service worker)
 - [x] Create placeholder icon images for PWA
 - [x] Add PWA capabilities (app icons)
+- [x] Implement frame capture from video
 
 
 ## Discovered During Work
