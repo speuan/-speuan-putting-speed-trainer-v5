@@ -1,21 +1,32 @@
 {
   "name": "Golf Putting Speed Trainer",
-  "short_name": "Putt Trainer",
-  "description": "Analyze the speed and trajectory of golf putts using your mobile camera",
-  "start_url": "./index.html",
+  "short_name": "Putting Speed",
+  "description": "Analyze your golf putting speed using your device camera",
+  "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#3498db",
+  "theme_color": "#4CAF50",
   "icons": [
     {
-      "src": "assets/images/icon-192.png",
+      "src": "assets/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "assets/images/icon-512.png",
+      "src": "assets/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "orientation": "portrait",
+  "categories": ["sports", "fitness", "productivity"],
+  "screenshots": [
+    {
+      "src": "assets/screenshots/screen1.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg"
     }
   ]
 } 

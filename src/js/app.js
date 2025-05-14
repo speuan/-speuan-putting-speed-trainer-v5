@@ -1,67 +1,77 @@
 /**
+ * Main application entry point
  * Golf Putting Speed Trainer
- * Main application file
  */
 
-// Global debug helper
-function debugLog(message) {
-    console.log(message);
-    if (window.debugInfo) {
-        const timestamp = new Date().toISOString().substring(11, 19);
-        const currentDebug = window.debugInfo.textContent;
-        const lines = currentDebug.split('\n');
-        if (lines.length > 8) {
-            lines.shift();
-        }
-        lines.push(`[${timestamp}] ${message}`);
-        window.debugInfo.textContent = lines.join('\n');
-    }
-}
-
-// Wait for DOM to load
 document.addEventListener('DOMContentLoaded', () => {
-    debugLog('DOM loaded, initializing app...');
+    // Initialize controllers
+    const cameraController = new CameraController();
+    const uiController = new UIController();
+    const ballDetector = new BallDetector();
+    const speedCalculator = new SpeedCalculator();
     
-    // Check camera capabilities directly
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        debugLog('Camera API is available on this device');
-    } else {
-        debugLog('⚠️ Camera API NOT available on this device!');
-    }
+    // DOM elements
+    const startCameraBtn = document.getElementById('start-camera');
+    const captureBtn = document.getElementById('capture-button');
+    const calibrateBtn = document.getElementById('calibrate-button');
+    const newPuttBtn = document.getElementById('new-putt-button');
     
     // App state
-    const appState = {
-        isRecording: false,
-        frameCount: 0,
-        ballPositions: [],
-        pixelToCmRatio: 1, // To be calibrated
-    };
+    let isRecording = false;
+    let isCalibrating = false;
+    let frameData = [];
     
-    // Add a slight delay before initializing the camera module
-    // This helps ensure the DOM is fully ready on some mobile browsers
-    debugLog('Setting up initialization delay...');
-    setTimeout(() => {
-        // Initialize camera module
-        if (typeof window.initCamera === 'function') {
-            debugLog('Initializing camera module...');
-            window.initCamera(appState);
-            
-            // Add a direct handler to the start button in case event listeners failed
-            const startCameraButton = document.getElementById('start-camera');
-            if (startCameraButton) {
-                debugLog('Adding backup camera start handler');
-                startCameraButton.onclick = function() {
-                    debugLog('Start camera clicked (direct handler)');
-                    if (typeof window.startCamera === 'function') {
-                        window.startCamera();
-                    } else {
-                        debugLog('⚠️ startCamera function not found!');
-                        alert('Camera initialization failed. Please reload the page and try again.');
-                    }
-                };
-            }
+    // Initialize event listeners
+    startCameraBtn.addEventListener('click', async () => {
+        await cameraController.startCamera();
+        captureBtn.disabled = false;
+        calibrateBtn.disabled = false;
+        startCameraBtn.disabled = true;
+    });
+    
+    captureBtn.addEventListener('click', () => {
+        if (!isRecording) {
+            // Start recording
+            isRecording = true;
+            frameData = [];
+            captureBtn.textContent = 'Stop Recording';
+            cameraController.startFrameCapture((frame) => {
+                frameData.push(frame);
+                
+                // Process frame for ball detection
+                const ballPosition = ballDetector.detectBall(frame);
+                if (ballPosition) {
+                    // Display ball position on canvas
+                    uiController.drawBallPosition(ballPosition);
+                }
+            });
         } else {
-            debugLog('⚠️ Camera module not loaded! Check script loading.');
+            // Stop recording
+            isRecording = false;
+            captureBtn.textContent = 'Record Putt';
+            cameraController.stopFrameCapture();
+            
+            // Process recorded frames
+            const speed = speedCalculator.calculateSpeed(frameData);
+            
+            // Display results
+            uiController.showResults(speed, frameData);
         }
-    }, 500);
+    });
+    
+    calibrateBtn.addEventListener('click', () => {
+        if (!isCalibrating) {
+            isCalibrating = true;
+            calibrateBtn.textContent = 'Finish Calibration';
+            uiController.enterCalibrationMode();
+        } else {
+            isCalibrating = false;
+            calibrateBtn.textContent = 'Calibrate';
+            uiController.exitCalibrationMode();
+        }
+    });
+    
+    newPuttBtn.addEventListener('click', () => {
+        uiController.resetUI();
+    });
 }); 

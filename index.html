@@ -2,24 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Golf Putting Speed Trainer - Analyze your putting speed">
+    <meta name="theme-color" content="#4CAF50">
     <title>Golf Putting Speed Trainer</title>
     <link rel="stylesheet" href="src/css/styles.css">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#3498db">
-    <!-- TensorFlow.js - use the CPU backend version for better iOS compatibility -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0"></script>
-    <!-- Initialize debug info -->
-    <script>
-        window.addEventListener('DOMContentLoaded', () => {
-            window.debugInfo = document.getElementById('debug-info');
-            if (window.debugInfo) {
-                window.debugInfo.textContent = `App initialized at: ${new Date().toISOString()}\nUserAgent: ${navigator.userAgent}\nPlatform: ${navigator.platform}`;
-            }
-        });
-    </script>
+    <link rel="icon" href="assets/icons/favicon.ico" type="image/x-icon">
 </head>
 <body>
     <header>
@@ -28,484 +17,48 @@
     
     <main>
         <div class="camera-container">
-            <video id="video" playsinline autoplay muted></video>
-            <canvas id="canvas" class="hidden"></canvas>
-            <div class="controls">
+            <video id="camera-feed" autoplay playsinline></video>
+            <canvas id="processing-canvas" style="display:none;"></canvas>
+            <canvas id="display-canvas"></canvas>
+            
+            <div class="camera-controls">
                 <button id="start-camera">Start Camera</button>
-                <button id="capture-frame" disabled>Capture</button>
-                <button id="detect-objects" disabled>Detect Objects</button>
-                <button id="stop-camera" disabled>Stop Camera</button>
+                <button id="capture-button" disabled>Record Putt</button>
+                <button id="calibrate-button" disabled>Calibrate</button>
             </div>
         </div>
         
-        <div class="results-container hidden">
-            <h2>Results</h2>
-            <div id="detection-results">
-                <p>Detection status: <span id="detection-status">Not started</span></p>
+        <div class="results-container" style="display:none;">
+            <h2>Putt Analysis</h2>
+            <div id="speed-result">
+                <span>Speed: </span><span id="speed-value">-</span><span> m/s</span>
             </div>
-            <div id="speed-results">
-                <p>Ball speed: <span id="ball-speed">0</span> m/s</p>
+            <div class="trajectory-visualization">
+                <canvas id="trajectory-canvas"></canvas>
             </div>
-        </div>
-        
-        <div class="debug-container">
-            <h3>Debug Info</h3>
-            <pre id="debug-info">Initializing...</pre>
+            <button id="new-putt-button">New Putt</button>
         </div>
     </main>
     
     <footer>
-        <p>&copy; 2024 Golf Putting Speed Trainer</p>
+        <p>Golf Putting Speed Trainer &copy; 2023</p>
     </footer>
 
-    <!-- Add script loading verification -->
+    <!-- Load scripts -->
+    <script src="src/js/camera/camera-controller.js"></script>
+    <script src="src/js/detection/ball-detector.js"></script>
+    <script src="src/js/calculation/speed-calculator.js"></script>
+    <script src="src/js/ui/ui-controller.js"></script>
+    <script src="src/js/app.js"></script>
     <script>
-        function checkScriptLoading() {
-            const timestamp = new Date().toISOString().substring(11, 19);
-            if (window.debugInfo) {
-                window.debugInfo.textContent += `\n[${timestamp}] Script loading check:`;
-                
-                // Check each script
-                if (window.tf) {
-                    window.debugInfo.textContent += `\n- TensorFlow.js: LOADED (${tf.version.tfjs})`;
-                } else {
-                    window.debugInfo.textContent += `\n- TensorFlow.js: MISSING!`;
-                }
-                
-                if (typeof window.initCamera === 'function') {
-                    window.debugInfo.textContent += `\n- camera.js: LOADED`;
-                } else {
-                    window.debugInfo.textContent += `\n- camera.js: MISSING!`;
-                }
-                
-                if (typeof window.initDetectionModel === 'function') {
-                    window.debugInfo.textContent += `\n- detection.js: LOADED`;
-                } else {
-                    window.debugInfo.textContent += `\n- detection.js: MISSING!`;
-                }
-                
-                if (typeof window.debugLog === 'function') {
-                    window.debugInfo.textContent += `\n- app.js: LOADED`;
-                } else {
-                    window.debugInfo.textContent += `\n- app.js: MISSING!`;
-                }
-            }
-        }
-        
-        // Schedule the check after a short delay
-        setTimeout(checkScriptLoading, 1000);
-    </script>
-
-    <!-- Load scripts with error handling -->
-    <script>
-        function loadScript(src, onload, onerror) {
-            const script = document.createElement('script');
-            script.src = src;
-            script.onload = onload;
-            script.onerror = onerror;
-            document.body.appendChild(script);
-        }
-    
-        // Load scripts in sequence with error handling
-        loadScript('src/js/app.js', 
-            () => {
-                if (window.debugInfo) window.debugInfo.textContent += '\napp.js loaded successfully';
-                
-                loadScript('src/js/detection.js', 
-                    () => {
-                        if (window.debugInfo) window.debugInfo.textContent += '\ndetection.js loaded successfully';
-                        
-                        loadScript('src/js/camera.js', 
-                            () => {
-                                if (window.debugInfo) window.debugInfo.textContent += '\ncamera.js loaded successfully';
-                            }, 
-                            (error) => {
-                                if (window.debugInfo) window.debugInfo.textContent += '\nError loading camera.js: ' + error;
-                            }
-                        );
-                    }, 
-                    (error) => {
-                        if (window.debugInfo) window.debugInfo.textContent += '\nError loading detection.js: ' + error;
-                    }
-                );
-            }, 
-            (error) => {
-                if (window.debugInfo) window.debugInfo.textContent += '\nError loading app.js: ' + error;
-            }
-        );
-    </script>
-
-    <script>
-        // Register service worker
+        // Register service worker for PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
-                    .then(registration => {
-                        console.log('Service Worker registered:', registration);
-                        if (window.debugInfo) {
-                            window.debugInfo.textContent += '\nService Worker registered successfully';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Service Worker registration failed:', error);
-                        if (window.debugInfo) {
-                            window.debugInfo.textContent += '\nService Worker registration failed: ' + error.message;
-                        }
-                    });
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('Service worker registered!', reg))
+                    .catch(err => console.log('Service worker registration failed:', err));
             });
         }
-    </script>
-    
-    <!-- Inline camera implementation to avoid loading issues -->
-    <script>
-        // Define global window functions directly in the HTML
-        window.updateDebugInfo = function(message) {
-            const timestamp = new Date().toISOString().substring(11, 19);
-            console.log(`[${timestamp}] ${message}`);
-            
-            if (window.debugInfo) {
-                const currentDebug = window.debugInfo.textContent;
-                const lines = currentDebug.split('\n');
-                if (lines.length > 8) {
-                    lines.shift();
-                }
-                lines.push(`[${timestamp}] ${message}`);
-                window.debugInfo.textContent = lines.join('\n');
-            }
-        };
-        
-        // Handle camera initialization
-        window.initCamera = function(state) {
-            window.updateDebugInfo('INLINE: Camera module initialization started');
-            
-            // Store state
-            window.appState = state || {
-                isRecording: false,
-                frameCount: 0,
-                ballPositions: [],
-                pixelToCmRatio: 1
-            };
-            
-            // Get DOM elements
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            const startBtn = document.getElementById('start-camera');
-            const stopBtn = document.getElementById('stop-camera');
-            const captureBtn = document.getElementById('capture-frame');
-            const detectBtn = document.getElementById('detect-objects');
-            
-            if (!video || !canvas || !startBtn) {
-                window.updateDebugInfo('INLINE: DOM elements not found');
-                return;
-            }
-            
-            // Set up event listeners
-            startBtn.addEventListener('click', window.startCamera);
-            stopBtn.addEventListener('click', window.stopCamera);
-            captureBtn.addEventListener('click', window.captureFrame);
-            if (detectBtn) {
-                detectBtn.addEventListener('click', window.runObjectDetection);
-            }
-            
-            window.updateDebugInfo('INLINE: Camera module initialized successfully');
-        };
-        
-        // Start camera
-        window.startCamera = function() {
-            window.updateDebugInfo('INLINE: Starting camera...');
-            
-            const video = document.getElementById('video');
-            const startBtn = document.getElementById('start-camera');
-            const stopBtn = document.getElementById('stop-camera');
-            const captureBtn = document.getElementById('capture-frame');
-            const detectBtn = document.getElementById('detect-objects');
-            
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("Camera API not available in this browser!");
-                window.updateDebugInfo('INLINE: Camera API not available');
-                return;
-            }
-            
-            // Disable start button
-            startBtn.disabled = true;
-            
-            // Always use the back camera
-            let constraints = {
-                audio: false,
-                video: {
-                    facingMode: 'environment'  // Always use the back/environment camera
-                }
-            };
-            
-            window.updateDebugInfo('INLINE: Using back camera by default');
-            window.updateDebugInfo('INLINE: Camera constraints: ' + JSON.stringify(constraints));
-            
-            // Request camera
-            navigator.mediaDevices.getUserMedia(constraints)
-            .then(function(stream) {
-                window.updateDebugInfo('INLINE: Camera started successfully');
-                
-                // Log which camera we got
-                const videoTrack = stream.getVideoTracks()[0];
-                if (videoTrack) {
-                    window.updateDebugInfo(`INLINE: Using camera: ${videoTrack.label}`);
-                }
-                
-                // Store stream
-                window.cameraStream = stream;
-                
-                // Connect to video
-                video.srcObject = stream;
-                video.setAttribute('playsinline', true);
-                video.muted = true;
-                
-                // Play video
-                video.play().then(() => {
-                    window.updateDebugInfo('INLINE: Video playing');
-                }).catch(e => {
-                    window.updateDebugInfo('INLINE: Play error: ' + e.message);
-                });
-                
-                // Enable buttons
-                stopBtn.disabled = false;
-                captureBtn.disabled = false;
-                
-            })
-            .catch(function(err) {
-                window.updateDebugInfo('INLINE: Camera error: ' + err.message);
-                
-                // Try with minimal constraints
-                window.updateDebugInfo('INLINE: Trying with minimal constraints');
-                navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: false
-                })
-                .then(function(stream) {
-                    window.updateDebugInfo('INLINE: Camera started with minimal constraints');
-                    
-                    // Log which camera we got
-                    const videoTrack = stream.getVideoTracks()[0];
-                    if (videoTrack) {
-                        window.updateDebugInfo(`INLINE: Using fallback camera: ${videoTrack.label}`);
-                    }
-                    
-                    // Store stream
-                    window.cameraStream = stream;
-                    
-                    // Connect to video
-                    video.srcObject = stream;
-                    video.setAttribute('playsinline', true);
-                    video.muted = true;
-                    
-                    // Play video
-                    video.play().then(() => {
-                        window.updateDebugInfo('INLINE: Video playing');
-                    }).catch(e => {
-                        window.updateDebugInfo('INLINE: Play error: ' + e.message);
-                    });
-                    
-                    // Enable buttons
-                    stopBtn.disabled = false;
-                    captureBtn.disabled = false;
-                })
-                .catch(function(fallbackErr) {
-                    window.updateDebugInfo('INLINE: Fallback camera error: ' + fallbackErr.message);
-                    startBtn.disabled = false;
-                    alert("Camera error: " + fallbackErr.message);
-                });
-            });
-        };
-        
-        // Stop camera
-        window.stopCamera = function() {
-            window.updateDebugInfo('INLINE: Stopping camera');
-            
-            if (window.cameraStream) {
-                window.cameraStream.getTracks().forEach(track => track.stop());
-                document.getElementById('video').srcObject = null;
-                window.cameraStream = null;
-                
-                // Update UI
-                document.getElementById('start-camera').disabled = false;
-                document.getElementById('stop-camera').disabled = true;
-                document.getElementById('capture-frame').disabled = true;
-                document.getElementById('detect-objects').disabled = true;
-                
-                window.updateDebugInfo('INLINE: Camera stopped');
-            }
-        };
-        
-        // Capture frame
-        window.captureFrame = function() {
-            window.updateDebugInfo('INLINE: Capturing frame');
-            
-            if (!window.cameraStream) {
-                alert("Camera not started. Please start the camera first.");
-                return;
-            }
-            
-            try {
-                const video = document.getElementById('video');
-                const canvas = document.getElementById('canvas');
-                const context = canvas.getContext('2d');
-                
-                // Ensure canvas matches video size
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                
-                // Draw to canvas
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                // Show canvas and results
-                canvas.classList.remove('hidden');
-                document.querySelector('.results-container').classList.remove('hidden');
-                
-                // Enable detection
-                document.getElementById('detect-objects').disabled = false;
-                
-                window.updateDebugInfo(`INLINE: Frame captured: ${canvas.width}x${canvas.height}`);
-            } catch (error) {
-                window.updateDebugInfo('INLINE: Frame capture error: ' + error.message);
-                alert("Error capturing frame: " + error.message);
-            }
-        };
-        
-        // Run object detection using the external detectObjects function
-        window.runObjectDetection = function() {
-            window.updateDebugInfo('INLINE: Running object detection...');
-            
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-            const detectionStatus = document.getElementById('detection-status');
-            
-            if (canvas.classList.contains('hidden')) {
-                window.updateDebugInfo('INLINE: No frame captured yet');
-                alert('Please capture a frame first');
-                return;
-            }
-            
-            // Update status
-            if (detectionStatus) {
-                detectionStatus.textContent = 'Running...';
-            }
-            
-            // Check if the detection module is loaded
-            if (typeof window.detectObjects === 'function') {
-                window.updateDebugInfo('INLINE: Using loaded detection module');
-                
-                try {
-                    // Disable button during detection
-                    document.getElementById('detect-objects').disabled = true;
-                    
-                    // Run detection (from detection.js)
-                    window.detectObjects(canvas, ctx, 0.6).then(detections => {
-                        // Update status with detection results
-                        if (detections && detections.length > 0) {
-                            const message = `Found ${detections.length} object(s): ` + 
-                                detections.map(d => `${d.class}(${Math.round(d.confidence*100)}%)`).join(', ');
-                            
-                            if (detectionStatus) {
-                                detectionStatus.textContent = message;
-                            }
-                            window.updateDebugInfo('INLINE: ' + message);
-                            
-                            // Update ball speed if we have ball detections
-                            updateBallSpeed(detections);
-                        } else {
-                            if (detectionStatus) {
-                                detectionStatus.textContent = 'No objects detected';
-                            }
-                            window.updateDebugInfo('INLINE: No objects detected above threshold');
-                            document.getElementById('ball-speed').textContent = '0';
-                        }
-                        
-                        // Re-enable button
-                        document.getElementById('detect-objects').disabled = false;
-                    }).catch(error => {
-                        window.updateDebugInfo('INLINE: Detection error: ' + error.message);
-                        if (detectionStatus) {
-                            detectionStatus.textContent = 'Detection failed: ' + error.message;
-                        }
-                        document.getElementById('detect-objects').disabled = false;
-                    });
-                } catch (error) {
-                    window.updateDebugInfo('INLINE: Detection error: ' + error.message);
-                    if (detectionStatus) {
-                        detectionStatus.textContent = 'Detection failed: ' + error.message;
-                    }
-                    document.getElementById('detect-objects').disabled = false;
-                }
-            } else {
-                window.updateDebugInfo('INLINE: Detection module not loaded');
-                if (detectionStatus) {
-                    detectionStatus.textContent = 'Detection module not loaded';
-                }
-                
-                // Try to load the detection module
-                window.updateDebugInfo('INLINE: Attempting to load detection module');
-                const script = document.createElement('script');
-                script.src = './src/js/detection.js';
-                script.onload = () => {
-                    window.updateDebugInfo('INLINE: Detection module loaded successfully');
-                    // Try again
-                    setTimeout(() => window.runObjectDetection(), 500);
-                };
-                script.onerror = (err) => {
-                    window.updateDebugInfo('INLINE: Failed to load detection module: ' + err);
-                    if (detectionStatus) {
-                        detectionStatus.textContent = 'Failed to load detection module';
-                    }
-                };
-                document.body.appendChild(script);
-            }
-        };
-        
-        // Update ball speed
-        function updateBallSpeed(detections) {
-            // This is a placeholder function - in a real app, we would calculate speed
-            // from multiple frames over time and use the calibrated pixel-to-cm ratio
-            const ballDetections = detections.filter(d => d.class === 'ball_golf');
-            const coinDetections = detections.filter(d => d.class === 'coin');
-            
-            window.updateDebugInfo(`INLINE: Found ${ballDetections.length} balls and ${coinDetections.length} coins`);
-            
-            // For now, we'll just simulate a realistic speed
-            let speed;
-            if (ballDetections.length > 0) {
-                // Generate a more realistic golf putting speed (between 1.5 and 3.5 m/s)
-                speed = (Math.random() * 2 + 1.5).toFixed(2);
-                
-                // Log the highest confidence ball detection
-                if (ballDetections.length > 0) {
-                    const bestBall = ballDetections.reduce((prev, current) => 
-                        (prev.confidence > current.confidence) ? prev : current);
-                    window.updateDebugInfo(`INLINE: Best ball detection - confidence: ${(bestBall.confidence*100).toFixed(1)}%`);
-                }
-            } else {
-                speed = '0';
-            }
-            
-            // If we detected a coin, also log it
-            if (coinDetections.length > 0) {
-                const bestCoin = coinDetections.reduce((prev, current) => 
-                    (prev.confidence > current.confidence) ? prev : current);
-                window.updateDebugInfo(`INLINE: Best coin detection - confidence: ${(bestCoin.confidence*100).toFixed(1)}%`);
-            }
-            
-            document.getElementById('ball-speed').textContent = speed;
-            window.updateDebugInfo(`INLINE: Ball speed: ${speed} m/s`);
-        }
-        
-        // Window onload handler for initialization
-        window.addEventListener('load', function() {
-            window.updateDebugInfo('INLINE: Page loaded');
-            
-            // Start camera initialization process
-            setTimeout(() => {
-                window.updateDebugInfo('INLINE: Auto-initializing camera');
-                window.initCamera();
-            }, 1000);
-        });
     </script>
 </body>
 </html> 
