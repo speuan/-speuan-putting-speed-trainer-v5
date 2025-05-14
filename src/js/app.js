@@ -7,71 +7,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize controllers
     const cameraController = new CameraController();
     const uiController = new UIController();
-    const ballDetector = new BallDetector();
-    const speedCalculator = new SpeedCalculator();
     
     // DOM elements
     const startCameraBtn = document.getElementById('start-camera');
     const captureBtn = document.getElementById('capture-button');
-    const calibrateBtn = document.getElementById('calibrate-button');
-    const newPuttBtn = document.getElementById('new-putt-button');
-    
-    // App state
-    let isRecording = false;
-    let isCalibrating = false;
-    let frameData = [];
+    const newCaptureBtn = document.getElementById('new-capture-button');
     
     // Initialize event listeners
     startCameraBtn.addEventListener('click', async () => {
-        await cameraController.startCamera();
-        captureBtn.disabled = false;
-        calibrateBtn.disabled = false;
-        startCameraBtn.disabled = true;
+        try {
+            await cameraController.startCamera();
+            captureBtn.disabled = false;
+            startCameraBtn.disabled = true;
+        } catch (error) {
+            console.error('Failed to start camera:', error);
+            alert('Could not access camera. Please check permissions and try again.');
+        }
     });
     
     captureBtn.addEventListener('click', () => {
-        if (!isRecording) {
-            // Start recording
-            isRecording = true;
-            frameData = [];
-            captureBtn.textContent = 'Stop Recording';
-            cameraController.startFrameCapture((frame) => {
-                frameData.push(frame);
-                
-                // Process frame for ball detection
-                const ballPosition = ballDetector.detectBall(frame);
-                if (ballPosition) {
-                    // Display ball position on canvas
-                    uiController.drawBallPosition(ballPosition);
-                }
-            });
-        } else {
-            // Stop recording
-            isRecording = false;
-            captureBtn.textContent = 'Record Putt';
-            cameraController.stopFrameCapture();
-            
-            // Process recorded frames
-            const speed = speedCalculator.calculateSpeed(frameData);
-            
-            // Display results
-            uiController.showResults(speed, frameData);
-        }
+        // Capture a single frame
+        const frame = cameraController.captureFrame();
+        
+        // Show the captured image in the results UI
+        uiController.showCapturedImage(frame);
     });
     
-    calibrateBtn.addEventListener('click', () => {
-        if (!isCalibrating) {
-            isCalibrating = true;
-            calibrateBtn.textContent = 'Finish Calibration';
-            uiController.enterCalibrationMode();
-        } else {
-            isCalibrating = false;
-            calibrateBtn.textContent = 'Calibrate';
-            uiController.exitCalibrationMode();
-        }
-    });
-    
-    newPuttBtn.addEventListener('click', () => {
+    newCaptureBtn.addEventListener('click', () => {
+        // Reset the UI and camera controller
         uiController.resetUI();
+        cameraController.reset();
     });
 }); 

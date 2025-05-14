@@ -23,20 +23,16 @@
             
             <div class="camera-controls">
                 <button id="start-camera">Start Camera</button>
-                <button id="capture-button" disabled>Record Putt</button>
-                <button id="calibrate-button" disabled>Calibrate</button>
+                <button id="capture-button" disabled>Capture Image</button>
             </div>
         </div>
         
         <div class="results-container" style="display:none;">
-            <h2>Putt Analysis</h2>
-            <div id="speed-result">
-                <span>Speed: </span><span id="speed-value">-</span><span> m/s</span>
+            <h2>Image Analysis</h2>
+            <div class="captured-image">
+                <canvas id="captured-canvas"></canvas>
             </div>
-            <div class="trajectory-visualization">
-                <canvas id="trajectory-canvas"></canvas>
-            </div>
-            <button id="new-putt-button">New Putt</button>
+            <button id="new-capture-button">New Capture</button>
         </div>
     </main>
     
