@@ -5,23 +5,32 @@
 
 class CameraController {
     constructor() {
+        console.log('Initializing CameraController');
         this.videoElement = document.getElementById('camera-feed');
         this.processingCanvas = document.getElementById('processing-canvas');
         this.displayCanvas = document.getElementById('display-canvas');
         this.processingContext = this.processingCanvas.getContext('2d');
         this.displayContext = this.displayCanvas.getContext('2d');
         
+        console.log('Elements found:', {
+            videoElement: this.videoElement,
+            processingCanvas: this.processingCanvas,
+            displayCanvas: this.displayCanvas
+        });
+        
         this.stream = null;
         this.frameCapture = null;
         this.frameCallback = null;
         this.CAPTURE_INTERVAL = 100; // ms between frames
         this.capturedFrame = null;
+        this.displayInterval = null;
     }
     
     /**
      * Start the camera and get user media stream
      */
     async startCamera() {
+        console.log('Starting camera...');
         try {
             const constraints = {
                 video: {
@@ -33,10 +42,16 @@ class CameraController {
             
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.videoElement.srcObject = this.stream;
+            console.log('Camera stream acquired');
             
             // Wait for video to be ready
             return new Promise((resolve) => {
                 this.videoElement.onloadedmetadata = () => {
+                    console.log('Video metadata loaded', {
+                        width: this.videoElement.videoWidth,
+                        height: this.videoElement.videoHeight
+                    });
+                    
                     // Set canvas dimensions to match video
                     this.processingCanvas.width = this.videoElement.videoWidth;
                     this.processingCanvas.height = this.videoElement.videoHeight;
@@ -60,8 +75,12 @@ class CameraController {
      * Show live video feed on display canvas
      */
     startVideoDisplay() {
+        console.log('Starting video display');
         // If we're already drawing, don't start a new interval
-        if (this.displayInterval) return;
+        if (this.displayInterval) {
+            console.log('Display interval already exists, not starting a new one');
+            return;
+        }
         
         this.displayInterval = setInterval(() => {
             this.displayContext.drawImage(
@@ -72,15 +91,19 @@ class CameraController {
                 this.displayCanvas.height
             );
         }, 33); // ~30 FPS
+        
+        console.log('Display interval started');
     }
     
     /**
      * Stop showing live video feed
      */
     stopVideoDisplay() {
+        console.log('Stopping video display');
         if (this.displayInterval) {
             clearInterval(this.displayInterval);
             this.displayInterval = null;
+            console.log('Display interval cleared');
         }
     }
     
@@ -89,6 +112,7 @@ class CameraController {
      * @returns {Object} The captured frame data
      */
     captureFrame() {
+        console.log('Capturing frame...');
         // Draw current video frame to processing canvas
         this.processingContext.drawImage(
             this.videoElement, 
@@ -109,6 +133,11 @@ class CameraController {
             )
         };
         
+        console.log('Frame captured', {
+            width: frame.imageData.width,
+            height: frame.imageData.height
+        });
+        
         // Store the captured frame
         this.capturedFrame = frame;
         
@@ -125,10 +154,12 @@ class CameraController {
      * Stop camera stream
      */
     stopCamera() {
+        console.log('Stopping camera');
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
             this.videoElement.srcObject = null;
+            console.log('Camera stream stopped');
         }
         
         this.stopVideoDisplay();
@@ -211,6 +242,7 @@ class CameraController {
      * Reset - clear the captured frame and restart video display
      */
     reset() {
+        console.log('Resetting camera controller');
         this.capturedFrame = null;
         this.startVideoDisplay();
     }

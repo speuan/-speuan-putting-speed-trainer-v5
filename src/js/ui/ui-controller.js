@@ -18,6 +18,13 @@ class UIController {
         
         // Flag to track if we're showing a captured image
         this.isShowingCapturedImage = false;
+        
+        // Log elements to verify they're found
+        console.log('Display canvas:', this.displayCanvas);
+        console.log('Capture button:', this.captureButton);
+        console.log('Start camera button:', this.startCameraButton);
+        console.log('Back to live button:', this.backToLiveButton);
+        console.log('New capture button:', this.newCaptureButton);
     }
     
     /**
@@ -25,6 +32,8 @@ class UIController {
      * @param {Object} frame - The captured frame data
      */
     showCapturedImage(frame) {
+        console.log('Showing captured image');
+        
         // Draw the image on the display canvas
         this.displayContext.putImageData(frame.imageData, 0, 0);
         
@@ -40,6 +49,8 @@ class UIController {
      * Reset the UI to show live feed
      */
     resetUI() {
+        console.log('Resetting UI');
+        
         // Clear display canvas (the camera will draw to it)
         this.displayContext.clearRect(0, 0, this.displayCanvas.width, this.displayCanvas.height);
         

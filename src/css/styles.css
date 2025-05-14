@@ -12,6 +12,7 @@ body {
     background-color: #f4f4f4;
     max-width: 100vw;
     overflow-x: hidden;
+    padding-bottom: 60px; /* Add padding to account for footer */
 }
 
 header {
@@ -41,30 +42,40 @@ main {
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    aspect-ratio: 16/9;
     background-color: #000;
 }
 
+.camera-container::before {
+    content: "";
+    display: block;
+    padding-top: 56.25%; /* 16:9 aspect ratio */
+}
+
 video, canvas#display-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    display: block;
     object-fit: cover;
 }
 
 #display-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
+    z-index: 2; /* Ensure display canvas is above video */
 }
 
+/* Camera Controls - positioned below the camera view */
 .camera-controls {
+    width: 100%;
+    max-width: 500px;
     display: flex;
     justify-content: space-around;
     padding: 1rem;
     background-color: #fff;
     flex-wrap: wrap;
     gap: 0.5rem;
+    margin-top: 0;
+    border-radius: 0 0 8px 8px;
 }
 
 button {
@@ -76,6 +87,7 @@ button {
     cursor: pointer;
     font-weight: bold;
     transition: background-color 0.3s;
+    min-width: 120px;
 }
 
 button:hover {
@@ -85,6 +97,38 @@ button:hover {
 button:disabled {
     background-color: #9E9E9E;
     cursor: not-allowed;
+}
+
+#back-to-live-button {
+    background-color: #2196F3; /* Different color to distinguish from other button */
+}
+
+#back-to-live-button:hover {
+    background-color: #0b7dda;
+}
+
+footer {
+    text-align: center;
+    padding: 1rem;
+    background-color: #4CAF50;
+    color: white;
+    font-size: 0.8rem;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}
+
+/* Media Queries */
+@media (max-width: 768px) {
+    .camera-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    button {
+        width: 100%;
+        max-width: 200px;
+    }
 }
 
 /* Results Container */
@@ -142,30 +186,4 @@ button:disabled {
     justify-content: center;
     gap: 1rem;
     margin-top: 1rem;
-}
-
-#back-to-live-button {
-    background-color: #2196F3; /* Different color to distinguish from other button */
-}
-
-#back-to-live-button:hover {
-    background-color: #0b7dda;
-}
-
-footer {
-    text-align: center;
-    padding: 1rem;
-    background-color: #4CAF50;
-    color: white;
-    font-size: 0.8rem;
-    position: fixed;
-    bottom: 0;
-    width: 100%;
-}
-
-/* Media Queries */
-@media (max-width: 768px) {
-    .camera-controls {
-        flex-direction: column;
-    }
 } 
