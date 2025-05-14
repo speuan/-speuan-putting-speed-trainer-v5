@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded and parsed');
     
     // Debug mode flag
-    const debugMode = true; // Set to true to enable visual debugging
+    const debugMode = false; // Set to false to disable visual debugging
     
     // Create debug elements if in debug mode
     if (debugMode) {
