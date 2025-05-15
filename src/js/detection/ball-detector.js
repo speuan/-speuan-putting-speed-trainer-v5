@@ -363,104 +363,106 @@ class BallDetector {
                         continue;
                     }
                     
-                    // Get box coordinates (x, y, w, h)
-                    const boxX = transposed[i][0]; // center x (normalized 0-1)
-                    const boxY = transposed[i][1]; // center y (normalized 0-1)
-                    const boxWidth = transposed[i][2]; // width (normalized 0-1)
-                    const boxHeight = transposed[i][3]; // height (normalized 0-1)
-                    
-                    // Add to raw detections for visualization
-                    rawDetections.push({
-                        class: detectedClass,
-                        confidence: maxClassScore,
-                        bbox: {
-                            x: boxX,
-                            y: boxY,
-                            width: boxWidth,
-                            height: boxHeight
-                        }
-                    });
-                    
-                    // Skip if confidence is below our actual detection threshold
-                    if (maxClassScore < this.detectionThreshold) {
-                        if (maxClassScore > 0.01) { // Log only somewhat significant detections to avoid noise
-                            lowConfidenceCount++;
-                            this.debugLogger.log(`Low confidence detection: class=${detectedClass in this.classNames ? this.classNames[detectedClass] : 'unknown'}, score=${maxClassScore.toFixed(3)} (below threshold)`, 'warning');
-                        }
-                        continue;
-                    }
-                    
-                    // Log detection details
-                    const className = this.classNames[detectedClass] || `unknown_${detectedClass}`;
-                    this.debugLogger.log(`Potential ${className}: x=${boxX.toFixed(3)}, y=${boxY.toFixed(3)}, w=${boxWidth.toFixed(3)}, h=${boxHeight.toFixed(3)}, conf=${maxClassScore.toFixed(3)}`, 'info');
-                    
-                    // Check if we have a valid detection
-                    if (detectedClass in this.classNames) {
-                        // CRITICAL FIX FOR COORDINATE TRANSFORMATION:
+                    try {
+                        // Get box coordinates and explicitly parse them to ensure they're numbers
+                        const boxX = parseFloat(transposed[i][0]); // center x (normalized 0-1)
+                        const boxY = parseFloat(transposed[i][1]); // center y (normalized 0-1)
+                        const boxWidth = parseFloat(transposed[i][2]); // width (normalized 0-1)
+                        const boxHeight = parseFloat(transposed[i][3]); // height (normalized 0-1)
                         
-                        // Explicit Number conversion to avoid string concatenation issues
-                        const boxXNum = Number(boxX);
-                        const boxYNum = Number(boxY);
-                        const boxWidthNum = Number(boxWidth);
-                        const boxHeightNum = Number(boxHeight);
-                        const inputSize = Number(this.inputSize);
-                        const offsetXNum = Number(offsetX);
-                        const offsetYNum = Number(offsetY);
-                        
-                        // 1. Convert to input space (0-640)
-                        const centerX = boxXNum * inputSize;
-                        const centerY = boxYNum * inputSize;
-                        const widthPx = boxWidthNum * inputSize;
-                        const heightPx = boxHeightNum * inputSize;
-                        
-                        // 2. Calculate top-left for bbox
-                        const inputLeft = centerX - (widthPx / 2);
-                        const inputTop = centerY - (heightPx / 2);
-                        
-                        // 3. Adjust for letterboxing offsets
-                        const imageSpaceX = inputLeft - offsetXNum;
-                        const imageSpaceY = inputTop - offsetYNum;
-                        
-                        // 4. Debug logs with explicit decimal places (avoid scientific notation)
-                        this.debugLogger.log(`Detection ${i} coordinates: 
-                            normalized: (${boxXNum.toFixed(4)}, ${boxYNum.toFixed(4)})
-                            input_space center: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})
-                            input_space top-left: (${inputLeft.toFixed(1)}, ${inputTop.toFixed(1)})
-                            image_space: (${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})
-                            size: ${widthPx.toFixed(1)} x ${heightPx.toFixed(1)}
-                            render area: ${renderWidth} x ${renderHeight}`, 'info');
-                            
-                        // 5. Boundary check
-                        if ((imageSpaceX + widthPx < 0) || 
-                            (imageSpaceX > renderWidth) || 
-                            (imageSpaceY + heightPx < 0) || 
-                            (imageSpaceY > renderHeight)) {
-                            this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) outside image area, skipping`, 'warning');
+                        // Validate the parsed values - they should be between 0 and 1 for normalized coordinates
+                        if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) ||
+                            boxX < 0 || boxX > 1 || boxY < 0 || boxY > 1 || 
+                            boxWidth <= 0 || boxWidth > 1 || boxHeight <= 0 || boxHeight > 1) {
+                            this.debugLogger.log(`Skipping detection ${i} with invalid coordinates: x=${transposed[i][0]}, y=${transposed[i][1]}, w=${transposed[i][2]}, h=${transposed[i][3]}`, 'warning');
                             continue;
                         }
                         
-                        // 6. Scale to original image
-                        const xScale = originalWidth / renderWidth;
-                        const yScale = originalHeight / renderHeight;
-                        
-                        const finalX = imageSpaceX * xScale;
-                        const finalY = imageSpaceY * yScale;
-                        const finalWidth = widthPx * xScale;
-                        const finalHeight = heightPx * yScale;
-                        
-                        // 7. Add to detections
-                        detections.push({
-                            class: this.classNames[detectedClass],
-                            confidence: maxClassScore, 
+                        // Add to raw detections for visualization
+                        rawDetections.push({
+                            class: detectedClass,
+                            confidence: maxClassScore,
                             bbox: {
-                                x: Math.max(0, finalX),
-                                y: Math.max(0, finalY),
-                                width: finalWidth,
-                                height: finalHeight
+                                x: boxX,
+                                y: boxY,
+                                width: boxWidth,
+                                height: boxHeight
                             }
                         });
                         
-                        this.debugLogger.log(`Valid detection ${i}: class=${this.classNames[detectedClass]}, conf=${maxClassScore.toFixed(3)}`, 'success');
+                        // Skip if confidence is below our actual detection threshold
+                        if (maxClassScore < this.detectionThreshold) {
+                            if (maxClassScore > 0.01) { // Log only somewhat significant detections to avoid noise
+                                lowConfidenceCount++;
+                                this.debugLogger.log(`Low confidence detection: class=${detectedClass in this.classNames ? this.classNames[detectedClass] : 'unknown'}, score=${maxClassScore.toFixed(3)} (below threshold)`, 'warning');
+                            }
+                            continue;
+                        }
+                        
+                        // Log detection details
+                        const className = this.classNames[detectedClass] || `unknown_${detectedClass}`;
+                        this.debugLogger.log(`Potential ${className}: x=${boxX.toFixed(3)}, y=${boxY.toFixed(3)}, w=${boxWidth.toFixed(3)}, h=${boxHeight.toFixed(3)}, conf=${maxClassScore.toFixed(3)}`, 'info');
+                        
+                        // Check if we have a valid detection
+                        if (detectedClass in this.classNames) {
+                            // COMPLETELY FIXED COORDINATE TRANSFORMATION:
+                            const inputSize = 640; // Use literal instead of this.inputSize
+                            
+                            // 1. Calculate coordinates in the model input space (0-640)
+                            const centerX = boxX * inputSize;
+                            const centerY = boxY * inputSize;
+                            const widthPx = boxWidth * inputSize;
+                            const heightPx = boxHeight * inputSize;
+                            
+                            // 2. Calculate top-left in input space
+                            const inputLeft = centerX - (widthPx / 2);
+                            const inputTop = centerY - (heightPx / 2);
+                            
+                            // 3. Adjust to get image space coordinates (accounting for letterboxing)
+                            const imageSpaceX = inputLeft - offsetX;
+                            const imageSpaceY = inputTop - offsetY;
+                            
+                            // 4. Log the coordinates with limited precision to avoid misrepresentation
+                            this.debugLogger.log(`Detection ${i} normalized coords: (${boxX.toFixed(3)}, ${boxY.toFixed(3)}, ${boxWidth.toFixed(3)}, ${boxHeight.toFixed(3)})`, 'info');
+                            this.debugLogger.log(`Detection ${i} input coords: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size=${widthPx.toFixed(1)}x${heightPx.toFixed(1)}`, 'info');
+                            this.debugLogger.log(`Detection ${i} image coords: pos=(${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})`, 'info');
+                            
+                            // 5. Check if detection is completely outside the image area
+                            if ((imageSpaceX + widthPx < 0) || 
+                                (imageSpaceX > renderWidth) || 
+                                (imageSpaceY + heightPx < 0) || 
+                                (imageSpaceY > renderHeight)) {
+                                this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) outside image area, skipping`, 'warning');
+                                continue;
+                            }
+                            
+                            // 6. Scale coordinates to original image dimensions
+                            const xScale = originalWidth / renderWidth;
+                            const yScale = originalHeight / renderHeight;
+                            
+                            const finalX = imageSpaceX * xScale;
+                            const finalY = imageSpaceY * yScale;
+                            const finalWidth = widthPx * xScale;
+                            const finalHeight = heightPx * yScale;
+                            
+                            // 7. Add to final detections
+                            detections.push({
+                                class: this.classNames[detectedClass],
+                                confidence: maxClassScore, 
+                                bbox: {
+                                    x: Math.max(0, finalX),
+                                    y: Math.max(0, finalY),
+                                    width: finalWidth,
+                                    height: finalHeight
+                                }
+                            });
+                            
+                            this.debugLogger.log(`Valid detection ${i}: class=${this.classNames[detectedClass]}, conf=${maxClassScore.toFixed(3)}`, 'success');
+                        }
+                    } catch (err) {
+                        // Log any errors in processing this detection and continue with the next one
+                        this.debugLogger.log(`Error processing detection ${i}: ${err.message}`, 'error');
+                        continue;
                     }
                 }
                 
@@ -496,125 +498,129 @@ class BallDetector {
                     for (let i = 0; i < predictions[0].length; i++) {
                         const prediction = predictions[0][i];
                         
-                        // YOLO typically outputs [x_center, y_center, width, height, obj_conf, class_1_conf, class_2_conf, ...]
-                        const boxX = prediction[0]; // center x (normalized 0-1)
-                        const boxY = prediction[1]; // center y (normalized 0-1)
-                        const boxWidth = prediction[2]; // width (normalized 0-1)
-                        const boxHeight = prediction[3]; // height (normalized 0-1)
-                        const confidence = prediction[4]; // object confidence
-                        
-                        // Find highest scoring class
-                        let maxClassScore = 0;
-                        let detectedClass = -1;
-                        
-                        // Classes start at index 5
-                        for (let j = 5; j < prediction.length; j++) {
-                            if (prediction[j] > maxClassScore) {
-                                maxClassScore = prediction[j];
-                                detectedClass = j - 5; // Adjust to get 0-based class index
-                            }
-                        }
-                        
-                        // Add to raw detections if confidence is reasonable
-                        if (detectedClass >= 0 && confidence * maxClassScore > 0.3) {
-                            rawDetections.push({
-                                class: detectedClass,
-                                confidence: confidence * maxClassScore,
-                                bbox: {
-                                    x: boxX,
-                                    y: boxY,
-                                    width: boxWidth,
-                                    height: boxHeight
-                                }
-                            });
-                        }
-                        
-                        // Log raw detection data for debugging
-                        const combinedScore = confidence * maxClassScore;
-                        if (detectedClass >= 0) {
-                            const className = this.classNames[detectedClass] || `unknown_${detectedClass}`;
+                        try {
+                            // Parse YOLO outputs with explicit parsing
+                            const boxX = parseFloat(prediction[0]); // center x (normalized 0-1)
+                            const boxY = parseFloat(prediction[1]); // center y (normalized 0-1)
+                            const boxWidth = parseFloat(prediction[2]); // width (normalized 0-1)
+                            const boxHeight = parseFloat(prediction[3]); // height (normalized 0-1)
+                            const confidence = parseFloat(prediction[4]); // object confidence
                             
-                            // Log all potential detections with scores for debugging
-                            const scoreLog = `Potential ${className}: confidence=${confidence.toFixed(3)}, class_score=${maxClassScore.toFixed(3)}, combined=${combinedScore.toFixed(3)}`;
-                            
-                            if (combinedScore < this.detectionThreshold) {
-                                lowConfidenceCount++;
-                                this.debugLogger.log(`${scoreLog} (below threshold)`, 'warning');
-                            } else {
-                                this.debugLogger.log(scoreLog, 'info');
-                            }
-                        }
-                        
-                        // Skip low confidence detections
-                        if (confidence < this.detectionThreshold) continue;
-                        
-                        // Check if we have a valid detection
-                        if (detectedClass in this.classNames) {
-                            // FIXED COORDINATE TRANSFORMATION:
-                            
-                            // Explicit Number conversion to avoid string concatenation issues
-                            const boxXNum = Number(boxX);
-                            const boxYNum = Number(boxY);
-                            const boxWidthNum = Number(boxWidth);
-                            const boxHeightNum = Number(boxHeight);
-                            const inputSize = Number(this.inputSize);
-                            const offsetXNum = Number(offsetX);
-                            const offsetYNum = Number(offsetY);
-                            
-                            // 1. Convert to input space (0-640)
-                            const centerX = boxXNum * inputSize;
-                            const centerY = boxYNum * inputSize;
-                            const widthPx = boxWidthNum * inputSize;
-                            const heightPx = boxHeightNum * inputSize;
-                            
-                            // 2. Calculate top-left for bbox
-                            const inputLeft = centerX - (widthPx / 2);
-                            const inputTop = centerY - (heightPx / 2);
-                            
-                            // 3. Adjust for letterboxing offsets
-                            const imageSpaceX = inputLeft - offsetXNum;
-                            const imageSpaceY = inputTop - offsetYNum;
-                            
-                            // 4. Debug logs with explicit decimal places (avoid scientific notation)
-                            this.debugLogger.log(`Detection ${i} coordinates: 
-                                normalized: (${boxXNum.toFixed(4)}, ${boxYNum.toFixed(4)})
-                                input_space center: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})
-                                input_space top-left: (${inputLeft.toFixed(1)}, ${inputTop.toFixed(1)})
-                                image_space: (${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})
-                                size: ${widthPx.toFixed(1)} x ${heightPx.toFixed(1)}
-                                render area: ${renderWidth} x ${renderHeight}`, 'info');
-                                
-                            // 5. Boundary check
-                            if ((imageSpaceX + widthPx < 0) || 
-                                (imageSpaceX > renderWidth) || 
-                                (imageSpaceY + heightPx < 0) || 
-                                (imageSpaceY > renderHeight)) {
-                                this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) outside image area, skipping`, 'warning');
+                            // Validate the parsed values - they should be between 0 and 1 for normalized coordinates
+                            if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) || isNaN(confidence) ||
+                                boxX < 0 || boxX > 1 || boxY < 0 || boxY > 1 || 
+                                boxWidth <= 0 || boxWidth > 1 || boxHeight <= 0 || boxHeight > 1 ||
+                                confidence < 0 || confidence > 1) {
+                                this.debugLogger.log(`Skipping detection ${i} with invalid values in array format`, 'warning');
                                 continue;
                             }
                             
-                            // 6. Scale to original image
-                            const xScale = originalWidth / renderWidth;
-                            const yScale = originalHeight / renderHeight;
+                            // Find highest scoring class
+                            let maxClassScore = 0;
+                            let detectedClass = -1;
                             
-                            const finalX = imageSpaceX * xScale;
-                            const finalY = imageSpaceY * yScale;
-                            const finalWidth = widthPx * xScale;
-                            const finalHeight = heightPx * yScale;
-                            
-                            // Add to detections
-                            detections.push({
-                                class: this.classNames[detectedClass],
-                                confidence: confidence * maxClassScore, // Combined score
-                                bbox: {
-                                    x: Math.max(0, finalX),
-                                    y: Math.max(0, finalY),
-                                    width: finalWidth,
-                                    height: finalHeight
+                            // Classes start at index 5
+                            for (let j = 5; j < prediction.length; j++) {
+                                const classScore = parseFloat(prediction[j]);
+                                if (!isNaN(classScore) && classScore > maxClassScore) {
+                                    maxClassScore = classScore;
+                                    detectedClass = j - 5; // Adjust to get 0-based class index
                                 }
-                            });
+                            }
                             
-                            this.debugLogger.log(`Valid detection ${i}: class=${this.classNames[detectedClass]}, conf=${(confidence * maxClassScore).toFixed(3)}`, 'success');
+                            // Add to raw detections if confidence is reasonable
+                            if (detectedClass >= 0 && confidence * maxClassScore > 0.3) {
+                                rawDetections.push({
+                                    class: detectedClass,
+                                    confidence: confidence * maxClassScore,
+                                    bbox: {
+                                        x: boxX,
+                                        y: boxY,
+                                        width: boxWidth,
+                                        height: boxHeight
+                                    }
+                                });
+                            }
+                            
+                            // Log raw detection data for debugging
+                            const combinedScore = confidence * maxClassScore;
+                            if (detectedClass >= 0) {
+                                const className = this.classNames[detectedClass] || `unknown_${detectedClass}`;
+                                
+                                // Log all potential detections with scores for debugging
+                                const scoreLog = `Potential ${className}: confidence=${confidence.toFixed(3)}, class_score=${maxClassScore.toFixed(3)}, combined=${combinedScore.toFixed(3)}`;
+                                
+                                if (combinedScore < this.detectionThreshold) {
+                                    lowConfidenceCount++;
+                                    this.debugLogger.log(`${scoreLog} (below threshold)`, 'warning');
+                                } else {
+                                    this.debugLogger.log(scoreLog, 'info');
+                                }
+                            }
+                            
+                            // Skip low confidence detections
+                            if (confidence < this.detectionThreshold) continue;
+                            
+                            // Check if we have a valid detection
+                            if (detectedClass in this.classNames) {
+                                // FIXED COORDINATE TRANSFORMATION using the same approach
+                                const inputSize = 640; // Use literal instead of this.inputSize
+                                
+                                // 1. Calculate coordinates in the model input space (0-640)
+                                const centerX = boxX * inputSize;
+                                const centerY = boxY * inputSize;
+                                const widthPx = boxWidth * inputSize;
+                                const heightPx = boxHeight * inputSize;
+                                
+                                // 2. Calculate top-left in input space
+                                const inputLeft = centerX - (widthPx / 2);
+                                const inputTop = centerY - (heightPx / 2);
+                                
+                                // 3. Adjust to get image space coordinates (accounting for letterboxing)
+                                const imageSpaceX = inputLeft - offsetX;
+                                const imageSpaceY = inputTop - offsetY;
+                                
+                                // 4. Log the coordinates with limited precision
+                                this.debugLogger.log(`Detection ${i} normalized coords: (${boxX.toFixed(3)}, ${boxY.toFixed(3)}, ${boxWidth.toFixed(3)}, ${boxHeight.toFixed(3)})`, 'info');
+                                this.debugLogger.log(`Detection ${i} input coords: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size=${widthPx.toFixed(1)}x${heightPx.toFixed(1)}`, 'info');
+                                this.debugLogger.log(`Detection ${i} image coords: pos=(${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})`, 'info');
+                                
+                                // 5. Check if detection is completely outside the image area
+                                if ((imageSpaceX + widthPx < 0) || 
+                                    (imageSpaceX > renderWidth) || 
+                                    (imageSpaceY + heightPx < 0) || 
+                                    (imageSpaceY > renderHeight)) {
+                                    this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) outside image area, skipping`, 'warning');
+                                    continue;
+                                }
+                                
+                                // 6. Scale coordinates to original image dimensions
+                                const xScale = originalWidth / renderWidth;
+                                const yScale = originalHeight / renderHeight;
+                                
+                                const finalX = imageSpaceX * xScale;
+                                const finalY = imageSpaceY * yScale;
+                                const finalWidth = widthPx * xScale;
+                                const finalHeight = heightPx * yScale;
+                                
+                                // Add to detections
+                                detections.push({
+                                    class: this.classNames[detectedClass],
+                                    confidence: confidence * maxClassScore, // Combined score
+                                    bbox: {
+                                        x: Math.max(0, finalX),
+                                        y: Math.max(0, finalY),
+                                        width: finalWidth,
+                                        height: finalHeight
+                                    }
+                                });
+                                
+                                this.debugLogger.log(`Valid detection ${i}: class=${this.classNames[detectedClass]}, conf=${(confidence * maxClassScore).toFixed(3)}`, 'success');
+                            }
+                        } catch (err) {
+                            // Log any errors in processing this detection and continue with the next one
+                            this.debugLogger.log(`Error processing detection ${i} in array format: ${err.message}`, 'error');
+                            continue;
                         }
                     }
                     
@@ -710,54 +716,80 @@ class BallDetector {
         if (!previewCanvas) return;
         
         const ctx = previewCanvas.getContext('2d');
-        const scale = Number(previewCanvas.width) / Number(this.inputSize); // Scale from model size to preview size
+        if (!ctx) return;
         
-        rawDetections.forEach(detection => {
-            const { bbox, class: classId, confidence } = detection;
+        try {
+            // Get preview canvas dimensions
+            const previewWidth = previewCanvas.width;
+            const previewHeight = previewCanvas.height;
             
-            // Get the class name
-            const className = this.classNames[classId] || `unknown_${classId}`;
+            // Calculate scale safely with fallback
+            const inputSize = 640; // Use literal value instead of this.inputSize
+            const scale = previewWidth / inputSize; 
             
-            // Choose color based on confidence
-            let color;
-            if (confidence >= this.detectionThreshold) {
-                color = className === 'ball_golf' ? 'rgba(255, 0, 0, 0.8)' : 'rgba(0, 255, 0, 0.8)';
-            } else {
-                color = className === 'ball_golf' ? 'rgba(255, 165, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
+            this.debugLogger.log(`Visualizing ${rawDetections.length} raw detections in ${previewWidth}x${previewHeight} preview`, 'info');
+            
+            let validCount = 0;
+            
+            rawDetections.forEach((detection, index) => {
+                try {
+                    const { bbox, class: classId, confidence } = detection;
+                    
+                    // Get the class name
+                    const className = this.classNames[classId] || `unknown_${classId}`;
+                    
+                    // Choose color based on confidence
+                    let color;
+                    if (confidence >= this.detectionThreshold) {
+                        color = className === 'ball_golf' ? 'rgba(255, 0, 0, 0.8)' : 'rgba(0, 255, 0, 0.8)';
+                    } else {
+                        color = className === 'ball_golf' ? 'rgba(255, 165, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
+                    }
+                    
+                    // Extract and validate coordinates
+                    const boxX = parseFloat(bbox.x); 
+                    const boxY = parseFloat(bbox.y);
+                    const boxWidth = parseFloat(bbox.width);
+                    const boxHeight = parseFloat(bbox.height);
+                    
+                    if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight)) {
+                        this.debugLogger.log(`Skipping invalid detection in visualization: ${JSON.stringify(bbox)}`, 'warning');
+                        return; // Skip this detection
+                    }
+                    
+                    // Calculate center position in scaled preview coordinates
+                    const centerX = boxX * inputSize * scale;
+                    const centerY = boxY * inputSize * scale;
+                    
+                    // Calculate width and height in preview scale
+                    const width = boxWidth * inputSize * scale;
+                    const height = boxHeight * inputSize * scale;
+                    
+                    // Calculate the top-left corner for drawing
+                    const x = centerX - (width / 2);
+                    const y = centerY - (height / 2);
+                    
+                    // Draw the bounding box
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, y, width, height);
+                    
+                    // Draw tiny label with confidence
+                    ctx.fillStyle = color;
+                    ctx.font = '8px Arial';
+                    ctx.fillText(`${Math.round(confidence * 100)}%`, x, y - 1);
+                    
+                    validCount++;
+                } catch (err) {
+                    this.debugLogger.log(`Error visualizing detection: ${err.message}`, 'error');
+                }
+            });
+            
+            if (validCount > 0) {
+                this.debugLogger.log(`Successfully visualized ${validCount} raw detections in preview`, 'info');
             }
-            
-            // Force numeric values to avoid string concatenation
-            const boxX = Number(bbox.x);
-            const boxY = Number(bbox.y);
-            const boxWidth = Number(bbox.width);
-            const boxHeight = Number(bbox.height);
-            const inputSize = Number(this.inputSize);
-            
-            // Calculate center position in scaled preview coordinates
-            const centerX = boxX * inputSize * scale;
-            const centerY = boxY * inputSize * scale;
-            
-            // Calculate width and height in preview scale
-            const width = boxWidth * inputSize * scale;
-            const height = boxHeight * inputSize * scale;
-            
-            // Calculate the top-left corner for drawing
-            const x = centerX - (width / 2);
-            const y = centerY - (height / 2);
-            
-            // Draw the bounding box
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x, y, width, height);
-            
-            // Draw tiny label with confidence
-            ctx.fillStyle = color;
-            ctx.font = '8px Arial';
-            ctx.fillText(`${Math.round(confidence * 100)}%`, x, y - 1);
-        });
-        
-        if (rawDetections.length > 0) {
-            this.debugLogger.log(`Visualized ${rawDetections.length} raw detections in preview`, 'info');
+        } catch (err) {
+            this.debugLogger.log(`Error in visualizeRawDetections: ${err.message}`, 'error');
         }
     }
 } 
