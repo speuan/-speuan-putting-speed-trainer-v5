@@ -371,9 +371,10 @@ class BallDetector {
                         const boxHeight = parseFloat(transposed[i][3]); // height (normalized 0-1)
                         
                         // Validate the parsed values - they should be between 0 and 1 for normalized coordinates
+                        // But allow some tolerance for coordinates that slightly exceed 1.0
                         if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) ||
-                            boxX < 0 || boxX > 1 || boxY < 0 || boxY > 1 || 
-                            boxWidth <= 0 || boxWidth > 1 || boxHeight <= 0 || boxHeight > 1) {
+                            boxX < 0 || boxX > 1.1 || boxY < 0 || boxY > 1.1 || 
+                            boxWidth <= 0 || boxWidth > 1.1 || boxHeight <= 0 || boxHeight > 1.1) {
                             this.debugLogger.log(`Skipping detection ${i} with invalid coordinates: x=${transposed[i][0]}, y=${transposed[i][1]}, w=${transposed[i][2]}, h=${transposed[i][3]}`, 'warning');
                             continue;
                         }
@@ -506,10 +507,10 @@ class BallDetector {
                             const boxHeight = parseFloat(prediction[3]); // height (normalized 0-1)
                             const confidence = parseFloat(prediction[4]); // object confidence
                             
-                            // Validate the parsed values - they should be between 0 and 1 for normalized coordinates
+                            // Validate the parsed values with more tolerance for coordinates slightly exceeding 1.0
                             if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) || isNaN(confidence) ||
-                                boxX < 0 || boxX > 1 || boxY < 0 || boxY > 1 || 
-                                boxWidth <= 0 || boxWidth > 1 || boxHeight <= 0 || boxHeight > 1 ||
+                                boxX < 0 || boxX > 1.1 || boxY < 0 || boxY > 1.1 || 
+                                boxWidth <= 0 || boxWidth > 1.1 || boxHeight <= 0 || boxHeight > 1.1 ||
                                 confidence < 0 || confidence > 1) {
                                 this.debugLogger.log(`Skipping detection ${i} with invalid values in array format`, 'warning');
                                 continue;
@@ -752,7 +753,10 @@ class BallDetector {
                     const boxWidth = parseFloat(bbox.width);
                     const boxHeight = parseFloat(bbox.height);
                     
-                    if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight)) {
+                    // Allow some tolerance for coordinates that may slightly exceed 1.0
+                    if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) || 
+                        boxX < 0 || boxX > 1.1 || boxY < 0 || boxY > 1.1 ||
+                        boxWidth <= 0 || boxWidth > 1.1 || boxHeight <= 0 || boxHeight > 1.1) {
                         this.debugLogger.log(`Skipping invalid detection in visualization: ${JSON.stringify(bbox)}`, 'warning');
                         return; // Skip this detection
                     }
