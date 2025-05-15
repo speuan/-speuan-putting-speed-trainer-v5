@@ -401,33 +401,35 @@ class BallDetector {
                         const halfH = boxHeight / 2;
                         
                         // Get coordinates in the model input space (before applying offsets)
-                        let modelX = (boxX - halfW) * this.inputSize;
-                        let modelY = (boxY - halfH) * this.inputSize;
+                        // These coordinates are relative to the full input size (including padding)
+                        const boxLeft = (boxX - halfW);
+                        const boxTop = (boxY - halfH);
+                        
+                        // Convert normalized coordinates [0-1] to pixel values in the model input space
+                        let modelX = boxLeft * this.inputSize;
+                        let modelY = boxTop * this.inputSize;
                         let modelWidth = boxWidth * this.inputSize;
                         let modelHeight = boxHeight * this.inputSize;
                         
                         // Adjust for the offsets added during image preprocessing
                         // This converts from model input space to the actual image space within the padded input
-                        modelX = modelX - offsetX;
-                        modelY = modelY - offsetY;
+                        let imageSpaceX = modelX - offsetX;
+                        let imageSpaceY = modelY - offsetY;
                         
                         // Log the boundary check values for debugging
                         this.debugLogger.log(`Detection ${i} boundary check: 
+                            boxX=${boxX.toFixed(3)}, boxY=${boxY.toFixed(3)}, 
                             modelX=${Math.round(modelX)}, modelY=${Math.round(modelY)}, 
+                            imageSpaceX=${Math.round(imageSpaceX)}, imageSpaceY=${Math.round(imageSpaceY)}, 
                             modelWidth=${Math.round(modelWidth)}, modelHeight=${Math.round(modelHeight)}, 
                             renderWidth=${Math.round(renderWidth)}, renderHeight=${Math.round(renderHeight)}`, 'info');
                         
                         // Skip detections that fall completely outside the valid image area (in padding)
                         // Only skip if the detection box is entirely outside the rendered image area
-                        // A detection is entirely outside if:
-                        // - Its right edge is left of the rendered area (modelX + modelWidth < 0)
-                        // - Its left edge is right of the rendered area (modelX > renderWidth)
-                        // - Its bottom edge is above the rendered area (modelY + modelHeight < 0)
-                        // - Its top edge is below the rendered area (modelY > renderHeight)
-                        if ((modelX + modelWidth < 0) || 
-                            (modelX > renderWidth) || 
-                            (modelY + modelHeight < 0) || 
-                            (modelY > renderHeight)) {
+                        if ((imageSpaceX + modelWidth < 0) || 
+                            (imageSpaceX > renderWidth) || 
+                            (imageSpaceY + modelHeight < 0) || 
+                            (imageSpaceY > renderHeight)) {
                             this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls completely outside the image area, skipping`, 'warning');
                             continue;
                         }
@@ -437,8 +439,8 @@ class BallDetector {
                         const yScale = originalHeight / renderHeight;
                         
                         // Calculate final coordinates in the original image
-                        const finalX = modelX * xScale;
-                        const finalY = modelY * yScale;
+                        const finalX = imageSpaceX * xScale;
+                        const finalY = imageSpaceY * yScale;
                         const finalWidth = modelWidth * xScale;
                         const finalHeight = modelHeight * yScale;
                         
@@ -549,28 +551,35 @@ class BallDetector {
                             const halfH = boxHeight / 2;
                             
                             // Get coordinates in the model input space (before applying offsets)
-                            let modelX = (boxX - halfW) * this.inputSize;
-                            let modelY = (boxY - halfH) * this.inputSize;
+                            // These coordinates are relative to the full input size (including padding)
+                            const boxLeft = (boxX - halfW);
+                            const boxTop = (boxY - halfH);
+                            
+                            // Convert normalized coordinates [0-1] to pixel values in the model input space
+                            let modelX = boxLeft * this.inputSize;
+                            let modelY = boxTop * this.inputSize;
                             let modelWidth = boxWidth * this.inputSize;
                             let modelHeight = boxHeight * this.inputSize;
                             
                             // Adjust for the offsets added during image preprocessing
                             // This converts from model input space to the actual image space within the padded input
-                            modelX = modelX - offsetX;
-                            modelY = modelY - offsetY;
+                            let imageSpaceX = modelX - offsetX;
+                            let imageSpaceY = modelY - offsetY;
                             
                             // Log the boundary check values for debugging
                             this.debugLogger.log(`Detection ${i} boundary check: 
+                                boxX=${boxX.toFixed(3)}, boxY=${boxY.toFixed(3)}, 
                                 modelX=${Math.round(modelX)}, modelY=${Math.round(modelY)}, 
+                                imageSpaceX=${Math.round(imageSpaceX)}, imageSpaceY=${Math.round(imageSpaceY)}, 
                                 modelWidth=${Math.round(modelWidth)}, modelHeight=${Math.round(modelHeight)}, 
                                 renderWidth=${Math.round(renderWidth)}, renderHeight=${Math.round(renderHeight)}`, 'info');
                             
                             // Skip detections that fall completely outside the valid image area (in padding)
                             // Only skip if the detection box is entirely outside the rendered image area
-                            if ((modelX + modelWidth < 0) || 
-                                (modelX > renderWidth) || 
-                                (modelY + modelHeight < 0) || 
-                                (modelY > renderHeight)) {
+                            if ((imageSpaceX + modelWidth < 0) || 
+                                (imageSpaceX > renderWidth) || 
+                                (imageSpaceY + modelHeight < 0) || 
+                                (imageSpaceY > renderHeight)) {
                                 this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls completely outside the image area, skipping`, 'warning');
                                 continue;
                             }
@@ -580,8 +589,8 @@ class BallDetector {
                             const yScale = originalHeight / renderHeight;
                             
                             // Calculate final coordinates in the original image
-                            const finalX = modelX * xScale;
-                            const finalY = modelY * yScale;
+                            const finalX = imageSpaceX * xScale;
+                            const finalY = imageSpaceY * yScale;
                             const finalWidth = modelWidth * xScale;
                             const finalHeight = modelHeight * yScale;
                             
