@@ -277,6 +277,15 @@ class BallDetector {
             // Process the result to get detections
             let detections = await this.processOutput(result, imageElement.width, imageElement.height, offsetX, offsetY, renderWidth, renderHeight);
             
+            // Apply Non-Maximum Suppression to remove duplicate detections
+            if (detections.length > 1) {
+                const originalCount = detections.length;
+                detections = this.applyNMS(detections, 0.3); // Use a lower threshold to be more aggressive
+                if (detections.length < originalCount) {
+                    this.debugLogger.log(`NMS removed ${originalCount - detections.length} duplicate detections`, 'success');
+                }
+            }
+            
             this.debugLogger.log(`Detection complete: found ${detections.length} objects`, detections.length > 0 ? 'success' : 'warning');
             
             // Clean up tensors to prevent memory leaks
@@ -827,5 +836,83 @@ class BallDetector {
         } catch (err) {
             this.debugLogger.log(`Error in visualizeRawDetections: ${err.message}`, 'error');
         }
+    }
+    
+    /**
+     * Apply Non-Maximum Suppression to filter duplicate detections
+     * @param {Array} detections - Array of detection objects
+     * @param {number} iouThreshold - Overlap threshold (0.0-1.0)
+     * @returns {Array} - Filtered array of detections
+     */
+    applyNMS(detections, iouThreshold = 0.45) {
+        if (detections.length === 0) return [];
+        
+        // Sort detections by confidence score (highest first)
+        const sortedDetections = [...detections].sort((a, b) => b.confidence - a.confidence);
+        const selectedDetections = [];
+        
+        this.debugLogger.log(`Applying NMS on ${sortedDetections.length} detections with IoU threshold ${iouThreshold}`, 'info');
+        
+        while (sortedDetections.length > 0) {
+            // Take the detection with highest confidence
+            const current = sortedDetections.shift();
+            selectedDetections.push(current);
+            
+            // Filter out overlapping detections with lower confidence
+            let i = 0;
+            while (i < sortedDetections.length) {
+                const iou = this.calculateIoU(current.bbox, sortedDetections[i].bbox);
+                this.debugLogger.log(`IoU between detections: ${iou.toFixed(3)}`, 'info');
+                
+                if (iou > iouThreshold) {
+                    // Remove detection with lower confidence that overlaps significantly
+                    this.debugLogger.log(`Removing duplicate detection with IoU=${iou.toFixed(3)} (conf: ${sortedDetections[i].confidence.toFixed(3)})`, 'info');
+                    sortedDetections.splice(i, 1);
+                } else {
+                    i++;
+                }
+            }
+        }
+        
+        this.debugLogger.log(`NMS complete: kept ${selectedDetections.length} out of ${detections.length} detections`, 'success');
+        return selectedDetections;
+    }
+    
+    /**
+     * Calculate Intersection over Union for two bounding boxes
+     * @param {Object} box1 - First bounding box {x, y, width, height}
+     * @param {Object} box2 - Second bounding box {x, y, width, height}
+     * @returns {number} - IoU value (0.0-1.0)
+     */
+    calculateIoU(box1, box2) {
+        // Calculate box coordinates in x1, y1, x2, y2 format
+        const box1X1 = box1.x;
+        const box1Y1 = box1.y;
+        const box1X2 = box1.x + box1.width;
+        const box1Y2 = box1.y + box1.height;
+        
+        const box2X1 = box2.x;
+        const box2Y1 = box2.y;
+        const box2X2 = box2.x + box2.width;
+        const box2Y2 = box2.y + box2.height;
+        
+        // Calculate intersection area
+        const xLeft = Math.max(box1X1, box2X1);
+        const yTop = Math.max(box1Y1, box2Y1);
+        const xRight = Math.min(box1X2, box2X2);
+        const yBottom = Math.min(box1Y2, box2Y2);
+        
+        if (xRight < xLeft || yBottom < yTop) {
+            return 0; // No intersection
+        }
+        
+        const intersectionArea = (xRight - xLeft) * (yBottom - yTop);
+        
+        // Calculate union area
+        const box1Area = (box1X2 - box1X1) * (box1Y2 - box1Y1);
+        const box2Area = (box2X2 - box2X1) * (box2Y2 - box2Y1);
+        const unionArea = box1Area + box2Area - intersectionArea;
+        
+        return intersectionArea / unionArea;
     }
 } 
