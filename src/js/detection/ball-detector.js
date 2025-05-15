@@ -365,19 +365,16 @@ class BallDetector {
                     
                     try {
                         // Get box coordinates and explicitly parse them to ensure they're numbers
-                        const boxX = parseFloat(transposed[i][0]); // center x (normalized 0-1)
-                        const boxY = parseFloat(transposed[i][1]); // center y (normalized 0-1)
-                        const boxWidth = parseFloat(transposed[i][2]); // width (normalized 0-1)
-                        const boxHeight = parseFloat(transposed[i][3]); // height (normalized 0-1)
+                        const boxX = parseFloat(transposed[i][0]); // center x
+                        const boxY = parseFloat(transposed[i][1]); // center y
+                        const boxWidth = parseFloat(transposed[i][2]); // width
+                        const boxHeight = parseFloat(transposed[i][3]); // height
                         
-                        // Validate the parsed values - they should be between 0 and 1 for normalized coordinates
-                        // But allow some tolerance for coordinates that slightly exceed 1.0
-                        if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) ||
-                            boxX < 0 || boxX > 1.1 || boxY < 0 || boxY > 1.1 || 
-                            boxWidth <= 0 || boxWidth > 1.1 || boxHeight <= 0 || boxHeight > 1.1) {
-                            this.debugLogger.log(`Skipping detection ${i} with invalid coordinates: x=${transposed[i][0]}, y=${transposed[i][1]}, w=${transposed[i][2]}, h=${transposed[i][3]}`, 'warning');
-                            continue;
-                        }
+                        // Check if the model's output are NOT normalized coordinates (some versions of YOLO output pixel coordinates)
+                        // This handles values like 209.0804443359375 which are clearly not in 0-1 range
+                        const isAlreadyInPixelSpace = boxX > 10 || boxY > 10; // If any coordinate > 10, assume not normalized
+                        
+                        this.debugLogger.log(`Detection ${i} raw coords: x=${boxX.toFixed(3)}, y=${boxY.toFixed(3)}, w=${boxWidth.toFixed(3)}, h=${boxHeight.toFixed(3)}, isPixelSpace=${isAlreadyInPixelSpace}`, 'info');
                         
                         // Add to raw detections for visualization
                         rawDetections.push({
@@ -387,7 +384,8 @@ class BallDetector {
                                 x: boxX,
                                 y: boxY,
                                 width: boxWidth,
-                                height: boxHeight
+                                height: boxHeight,
+                                isPixelSpace: isAlreadyInPixelSpace
                             }
                         });
                         
@@ -406,14 +404,25 @@ class BallDetector {
                         
                         // Check if we have a valid detection
                         if (detectedClass in this.classNames) {
-                            // COMPLETELY FIXED COORDINATE TRANSFORMATION:
-                            const inputSize = 640; // Use literal instead of this.inputSize
+                            const inputSize = 640; // Standard YOLO input size
+                            let centerX, centerY, widthPx, heightPx;
                             
-                            // 1. Calculate coordinates in the model input space (0-640)
-                            const centerX = boxX * inputSize;
-                            const centerY = boxY * inputSize;
-                            const widthPx = boxWidth * inputSize;
-                            const heightPx = boxHeight * inputSize;
+                            // Handle coordinates differently based on if they're already in pixel space
+                            if (isAlreadyInPixelSpace) {
+                                // Model already output pixel coordinates - use them directly
+                                centerX = boxX;
+                                centerY = boxY;
+                                widthPx = boxWidth;
+                                heightPx = boxHeight;
+                                this.debugLogger.log(`Using direct pixel coordinates: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)})`, 'info');
+                            } else {
+                                // These are normalized coordinates (0-1) - convert to pixels
+                                centerX = boxX * inputSize;
+                                centerY = boxY * inputSize;
+                                widthPx = boxWidth * inputSize;
+                                heightPx = boxHeight * inputSize;
+                                this.debugLogger.log(`Converted normalized to pixel: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)})`, 'info');
+                            }
                             
                             // 2. Calculate top-left in input space
                             const inputLeft = centerX - (widthPx / 2);
@@ -423,10 +432,9 @@ class BallDetector {
                             const imageSpaceX = inputLeft - offsetX;
                             const imageSpaceY = inputTop - offsetY;
                             
-                            // 4. Log the coordinates with limited precision to avoid misrepresentation
-                            this.debugLogger.log(`Detection ${i} normalized coords: (${boxX.toFixed(3)}, ${boxY.toFixed(3)}, ${boxWidth.toFixed(3)}, ${boxHeight.toFixed(3)})`, 'info');
-                            this.debugLogger.log(`Detection ${i} input coords: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size=${widthPx.toFixed(1)}x${heightPx.toFixed(1)}`, 'info');
-                            this.debugLogger.log(`Detection ${i} image coords: pos=(${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})`, 'info');
+                            // 4. Log the coordinates with limited precision
+                            this.debugLogger.log(`Detection ${i} pixel coords: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size=${widthPx.toFixed(1)}x${heightPx.toFixed(1)}`, 'info');
+                            this.debugLogger.log(`Detection ${i} image coords after offset: pos=(${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})`, 'info');
                             
                             // 5. Check if detection is completely outside the image area
                             if ((imageSpaceX + widthPx < 0) || 
@@ -501,20 +509,26 @@ class BallDetector {
                         
                         try {
                             // Parse YOLO outputs with explicit parsing
-                            const boxX = parseFloat(prediction[0]); // center x (normalized 0-1)
-                            const boxY = parseFloat(prediction[1]); // center y (normalized 0-1)
-                            const boxWidth = parseFloat(prediction[2]); // width (normalized 0-1)
-                            const boxHeight = parseFloat(prediction[3]); // height (normalized 0-1)
+                            const boxX = parseFloat(prediction[0]); // center x
+                            const boxY = parseFloat(prediction[1]); // center y
+                            const boxWidth = parseFloat(prediction[2]); // width
+                            const boxHeight = parseFloat(prediction[3]); // height
                             const confidence = parseFloat(prediction[4]); // object confidence
                             
-                            // Validate the parsed values with more tolerance for coordinates slightly exceeding 1.0
-                            if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) || isNaN(confidence) ||
+                            // Check if values are already in pixel space (not normalized 0-1)
+                            const isAlreadyInPixelSpace = boxX > 10 || boxY > 10; // If coordinates > 10, assume pixel space
+                            
+                            // Only validate if we expect normalized coordinates
+                            if (!isAlreadyInPixelSpace && (
+                                isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) || isNaN(confidence) ||
                                 boxX < 0 || boxX > 1.1 || boxY < 0 || boxY > 1.1 || 
                                 boxWidth <= 0 || boxWidth > 1.1 || boxHeight <= 0 || boxHeight > 1.1 ||
-                                confidence < 0 || confidence > 1) {
-                                this.debugLogger.log(`Skipping detection ${i} with invalid values in array format`, 'warning');
+                                confidence < 0 || confidence > 1)) {
+                                this.debugLogger.log(`Skipping detection ${i} with invalid normalized values`, 'warning');
                                 continue;
                             }
+                            
+                            this.debugLogger.log(`Detection ${i} raw coords: x=${boxX.toFixed(3)}, y=${boxY.toFixed(3)}, w=${boxWidth.toFixed(3)}, h=${boxHeight.toFixed(3)}, isPixelSpace=${isAlreadyInPixelSpace}`, 'info');
                             
                             // Find highest scoring class
                             let maxClassScore = 0;
@@ -538,7 +552,8 @@ class BallDetector {
                                         x: boxX,
                                         y: boxY,
                                         width: boxWidth,
-                                        height: boxHeight
+                                        height: boxHeight,
+                                        isPixelSpace: isAlreadyInPixelSpace
                                     }
                                 });
                             }
@@ -564,14 +579,25 @@ class BallDetector {
                             
                             // Check if we have a valid detection
                             if (detectedClass in this.classNames) {
-                                // FIXED COORDINATE TRANSFORMATION using the same approach
-                                const inputSize = 640; // Use literal instead of this.inputSize
+                                const inputSize = 640; // Standard YOLO input size
+                                let centerX, centerY, widthPx, heightPx;
                                 
-                                // 1. Calculate coordinates in the model input space (0-640)
-                                const centerX = boxX * inputSize;
-                                const centerY = boxY * inputSize;
-                                const widthPx = boxWidth * inputSize;
-                                const heightPx = boxHeight * inputSize;
+                                // Handle coordinates differently based on if they're already in pixel space
+                                if (isAlreadyInPixelSpace) {
+                                    // Model already output pixel coordinates - use them directly
+                                    centerX = boxX;
+                                    centerY = boxY;
+                                    widthPx = boxWidth;
+                                    heightPx = boxHeight;
+                                    this.debugLogger.log(`Using direct pixel coordinates: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)})`, 'info');
+                                } else {
+                                    // These are normalized coordinates (0-1) - convert to pixels
+                                    centerX = boxX * inputSize;
+                                    centerY = boxY * inputSize;
+                                    widthPx = boxWidth * inputSize;
+                                    heightPx = boxHeight * inputSize;
+                                    this.debugLogger.log(`Converted normalized to pixel: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)})`, 'info');
+                                }
                                 
                                 // 2. Calculate top-left in input space
                                 const inputLeft = centerX - (widthPx / 2);
@@ -582,9 +608,8 @@ class BallDetector {
                                 const imageSpaceY = inputTop - offsetY;
                                 
                                 // 4. Log the coordinates with limited precision
-                                this.debugLogger.log(`Detection ${i} normalized coords: (${boxX.toFixed(3)}, ${boxY.toFixed(3)}, ${boxWidth.toFixed(3)}, ${boxHeight.toFixed(3)})`, 'info');
-                                this.debugLogger.log(`Detection ${i} input coords: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size=${widthPx.toFixed(1)}x${heightPx.toFixed(1)}`, 'info');
-                                this.debugLogger.log(`Detection ${i} image coords: pos=(${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})`, 'info');
+                                this.debugLogger.log(`Detection ${i} pixel coords: center=(${centerX.toFixed(1)}, ${centerY.toFixed(1)}), size=${widthPx.toFixed(1)}x${heightPx.toFixed(1)}`, 'info');
+                                this.debugLogger.log(`Detection ${i} image coords after offset: pos=(${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})`, 'info');
                                 
                                 // 5. Check if detection is completely outside the image area
                                 if ((imageSpaceX + widthPx < 0) || 
@@ -724,9 +749,9 @@ class BallDetector {
             const previewWidth = previewCanvas.width;
             const previewHeight = previewCanvas.height;
             
-            // Calculate scale safely with fallback
+            // Calculate scale from model size to preview size
             const inputSize = 640; // Use literal value instead of this.inputSize
-            const scale = previewWidth / inputSize; 
+            const scale = previewWidth / inputSize;
             
             this.debugLogger.log(`Visualizing ${rawDetections.length} raw detections in ${previewWidth}x${previewHeight} preview`, 'info');
             
@@ -748,26 +773,32 @@ class BallDetector {
                     }
                     
                     // Extract and validate coordinates
-                    const boxX = parseFloat(bbox.x); 
+                    const boxX = parseFloat(bbox.x);
                     const boxY = parseFloat(bbox.y);
                     const boxWidth = parseFloat(bbox.width);
                     const boxHeight = parseFloat(bbox.height);
+                    const isPixelSpace = bbox.isPixelSpace === true;
                     
-                    // Allow some tolerance for coordinates that may slightly exceed 1.0
-                    if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight) || 
-                        boxX < 0 || boxX > 1.1 || boxY < 0 || boxY > 1.1 ||
-                        boxWidth <= 0 || boxWidth > 1.1 || boxHeight <= 0 || boxHeight > 1.1) {
+                    if (isNaN(boxX) || isNaN(boxY) || isNaN(boxWidth) || isNaN(boxHeight)) {
                         this.debugLogger.log(`Skipping invalid detection in visualization: ${JSON.stringify(bbox)}`, 'warning');
                         return; // Skip this detection
                     }
                     
-                    // Calculate center position in scaled preview coordinates
-                    const centerX = boxX * inputSize * scale;
-                    const centerY = boxY * inputSize * scale;
+                    let centerX, centerY, width, height;
                     
-                    // Calculate width and height in preview scale
-                    const width = boxWidth * inputSize * scale;
-                    const height = boxHeight * inputSize * scale;
+                    if (isPixelSpace) {
+                        // These are already pixel coordinates
+                        centerX = boxX * scale; // Scale down to preview size
+                        centerY = boxY * scale;
+                        width = boxWidth * scale;
+                        height = boxHeight * scale;
+                    } else {
+                        // These are normalized coordinates (0-1)
+                        centerX = boxX * inputSize * scale;
+                        centerY = boxY * inputSize * scale;
+                        width = boxWidth * inputSize * scale;
+                        height = boxHeight * inputSize * scale;
+                    }
                     
                     // Calculate the top-left corner for drawing
                     const x = centerX - (width / 2);
@@ -778,10 +809,11 @@ class BallDetector {
                     ctx.lineWidth = 1;
                     ctx.strokeRect(x, y, width, height);
                     
-                    // Draw tiny label with confidence
+                    // Draw tiny label with confidence and coordinate type
                     ctx.fillStyle = color;
                     ctx.font = '8px Arial';
-                    ctx.fillText(`${Math.round(confidence * 100)}%`, x, y - 1);
+                    const coordType = isPixelSpace ? 'px' : 'norm';
+                    ctx.fillText(`${Math.round(confidence * 100)}% (${coordType})`, x, y - 1);
                     
                     validCount++;
                 } catch (err) {
