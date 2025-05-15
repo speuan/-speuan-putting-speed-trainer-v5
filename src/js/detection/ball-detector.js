@@ -8,7 +8,7 @@ class BallDetector {
         this.model = null;
         this.isModelLoaded = false;
         this.modelLoading = false;
-        this.detectionThreshold = 0.05; // Lower threshold to improve detection sensitivity
+        this.detectionThreshold = 0.6; // Higher threshold to only get high confidence detections
         this.modelPath = './my_model_web_model_5/model.json';
         this.classNames = {
             0: 'ball_golf',
@@ -210,9 +210,21 @@ class BallDetector {
                 const previewCtx = previewCanvas.getContext('2d');
                 previewCtx.drawImage(tempCanvas, 0, 0, 150, 150);
                 
+                // Draw a red border around the actual image area (non-padding)
+                const previewScaleX = 150 / this.inputSize;
+                const previewScaleY = 150 / this.inputSize;
+                previewCtx.strokeStyle = 'red';
+                previewCtx.lineWidth = 2;
+                previewCtx.strokeRect(
+                    offsetX * previewScaleX,
+                    offsetY * previewScaleY,
+                    renderWidth * previewScaleX,
+                    renderHeight * previewScaleY
+                );
+                
                 // Add a heading
                 const previewLabel = document.createElement('div');
-                previewLabel.textContent = 'Model Input Preview:';
+                previewLabel.textContent = 'Model Input Preview (red = image boundary):';
                 previewLabel.style.fontSize = '0.8rem';
                 previewLabel.style.textAlign = 'center';
                 previewLabel.style.marginTop = '8px';
@@ -330,6 +342,9 @@ class BallDetector {
                 
                 this.debugLogger.log(`Processed ${transposed.length} potential detections`, 'info');
                 
+                // Store raw detections for visualization
+                const rawDetections = [];
+                
                 // Now process each detection
                 for (let i = 0; i < transposed.length; i++) {
                     // Find the class with highest confidence
@@ -344,11 +359,7 @@ class BallDetector {
                     }
                     
                     // Skip if no class detected or confidence is too low
-                    if (detectedClass === -1 || maxClassScore < this.detectionThreshold) {
-                        if (maxClassScore > 0.01) { // Log only somewhat significant detections to avoid noise
-                            lowConfidenceCount++;
-                            this.debugLogger.log(`Low confidence detection: class=${detectedClass in this.classNames ? this.classNames[detectedClass] : 'unknown'}, score=${maxClassScore.toFixed(3)} (below threshold)`, 'warning');
-                        }
+                    if (detectedClass === -1 || maxClassScore < 0.3) { // Use a lower threshold for visualization
                         continue;
                     }
                     
@@ -357,6 +368,27 @@ class BallDetector {
                     const boxY = transposed[i][1]; // center y (normalized 0-1)
                     const boxWidth = transposed[i][2]; // width (normalized 0-1)
                     const boxHeight = transposed[i][3]; // height (normalized 0-1)
+                    
+                    // Add to raw detections for visualization
+                    rawDetections.push({
+                        class: detectedClass,
+                        confidence: maxClassScore,
+                        bbox: {
+                            x: boxX,
+                            y: boxY,
+                            width: boxWidth,
+                            height: boxHeight
+                        }
+                    });
+                    
+                    // Skip if confidence is below our actual detection threshold
+                    if (maxClassScore < this.detectionThreshold) {
+                        if (maxClassScore > 0.01) { // Log only somewhat significant detections to avoid noise
+                            lowConfidenceCount++;
+                            this.debugLogger.log(`Low confidence detection: class=${detectedClass in this.classNames ? this.classNames[detectedClass] : 'unknown'}, score=${maxClassScore.toFixed(3)} (below threshold)`, 'warning');
+                        }
+                        continue;
+                    }
                     
                     // Log detection details
                     const className = this.classNames[detectedClass] || `unknown_${detectedClass}`;
@@ -379,10 +411,24 @@ class BallDetector {
                         modelX = modelX - offsetX;
                         modelY = modelY - offsetY;
                         
-                        // Skip detections that fall outside the valid image area (in padding)
-                        if (modelX < -modelWidth/2 || modelY < -modelHeight/2 || 
-                            modelX > renderWidth + modelWidth/2 || modelY > renderHeight + modelHeight/2) {
-                            this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls in padding area, skipping`, 'warning');
+                        // Log the boundary check values for debugging
+                        this.debugLogger.log(`Detection ${i} boundary check: 
+                            modelX=${Math.round(modelX)}, modelY=${Math.round(modelY)}, 
+                            modelWidth=${Math.round(modelWidth)}, modelHeight=${Math.round(modelHeight)}, 
+                            renderWidth=${Math.round(renderWidth)}, renderHeight=${Math.round(renderHeight)}`, 'info');
+                        
+                        // Skip detections that fall completely outside the valid image area (in padding)
+                        // Only skip if the detection box is entirely outside the rendered image area
+                        // A detection is entirely outside if:
+                        // - Its right edge is left of the rendered area (modelX + modelWidth < 0)
+                        // - Its left edge is right of the rendered area (modelX > renderWidth)
+                        // - Its bottom edge is above the rendered area (modelY + modelHeight < 0)
+                        // - Its top edge is below the rendered area (modelY > renderHeight)
+                        if ((modelX + modelWidth < 0) || 
+                            (modelX > renderWidth) || 
+                            (modelY + modelHeight < 0) || 
+                            (modelY > renderHeight)) {
+                            this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls completely outside the image area, skipping`, 'warning');
                             continue;
                         }
                         
@@ -412,6 +458,9 @@ class BallDetector {
                     }
                 }
                 
+                // Visualize raw detections in the debug preview
+                this.visualizeRawDetections(rawDetections);
+                
                 if (lowConfidenceCount > 0) {
                     this.debugLogger.log(`Found ${lowConfidenceCount} low-confidence detections below threshold (${this.detectionThreshold})`, 'warning');
                 }
@@ -434,6 +483,9 @@ class BallDetector {
                     const detections = [];
                     let lowConfidenceCount = 0;
                     
+                    // Store raw detections for visualization
+                    const rawDetections = [];
+                    
                     // Process each prediction in the output tensor
                     for (let i = 0; i < predictions[0].length; i++) {
                         const prediction = predictions[0][i];
@@ -455,6 +507,20 @@ class BallDetector {
                                 maxClassScore = prediction[j];
                                 detectedClass = j - 5; // Adjust to get 0-based class index
                             }
+                        }
+                        
+                        // Add to raw detections if confidence is reasonable
+                        if (detectedClass >= 0 && confidence * maxClassScore > 0.3) {
+                            rawDetections.push({
+                                class: detectedClass,
+                                confidence: confidence * maxClassScore,
+                                bbox: {
+                                    x: boxX,
+                                    y: boxY,
+                                    width: boxWidth,
+                                    height: boxHeight
+                                }
+                            });
                         }
                         
                         // Log raw detection data for debugging
@@ -493,10 +559,19 @@ class BallDetector {
                             modelX = modelX - offsetX;
                             modelY = modelY - offsetY;
                             
-                            // Skip detections that fall outside the valid image area (in padding)
-                            if (modelX < -modelWidth/2 || modelY < -modelHeight/2 || 
-                                modelX > renderWidth + modelWidth/2 || modelY > renderHeight + modelHeight/2) {
-                                this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls in padding area, skipping`, 'warning');
+                            // Log the boundary check values for debugging
+                            this.debugLogger.log(`Detection ${i} boundary check: 
+                                modelX=${Math.round(modelX)}, modelY=${Math.round(modelY)}, 
+                                modelWidth=${Math.round(modelWidth)}, modelHeight=${Math.round(modelHeight)}, 
+                                renderWidth=${Math.round(renderWidth)}, renderHeight=${Math.round(renderHeight)}`, 'info');
+                            
+                            // Skip detections that fall completely outside the valid image area (in padding)
+                            // Only skip if the detection box is entirely outside the rendered image area
+                            if ((modelX + modelWidth < 0) || 
+                                (modelX > renderWidth) || 
+                                (modelY + modelHeight < 0) || 
+                                (modelY > renderHeight)) {
+                                this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls completely outside the image area, skipping`, 'warning');
                                 continue;
                             }
                             
@@ -525,6 +600,9 @@ class BallDetector {
                             this.debugLogger.log(`Valid detection ${i}: class=${this.classNames[detectedClass]}, conf=${(confidence * maxClassScore).toFixed(3)}`, 'success');
                         }
                     }
+                    
+                    // Visualize raw detections in the debug preview
+                    this.visualizeRawDetections(rawDetections);
                     
                     if (lowConfidenceCount > 0) {
                         this.debugLogger.log(`Found ${lowConfidenceCount} low-confidence detections below threshold (${this.detectionThreshold})`, 'warning');
@@ -603,6 +681,55 @@ class BallDetector {
             if (coinCount > 0) {
                 this.debugLogger.log(`Drew ${coinCount} coin bounding boxes`, 'success');
             }
+        }
+    }
+    
+    /**
+     * Visualize raw detections in the debug preview
+     * @param {Array} rawDetections - Array of raw detection objects
+     */
+    visualizeRawDetections(rawDetections) {
+        const previewCanvas = document.getElementById('model-input-preview')?.querySelector('canvas');
+        if (!previewCanvas) return;
+        
+        const ctx = previewCanvas.getContext('2d');
+        const scale = previewCanvas.width / this.inputSize; // Scale from model size to preview size
+        
+        rawDetections.forEach(detection => {
+            const { bbox, class: classId, confidence } = detection;
+            
+            // Get the class name
+            const className = this.classNames[classId] || `unknown_${classId}`;
+            
+            // Choose color based on confidence
+            let color;
+            if (confidence >= this.detectionThreshold) {
+                color = className === 'ball_golf' ? 'rgba(255, 0, 0, 0.8)' : 'rgba(0, 255, 0, 0.8)';
+            } else {
+                color = className === 'ball_golf' ? 'rgba(255, 165, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
+            }
+            
+            // Convert from center x,y,w,h to top-left x,y,w,h
+            const halfW = bbox.width / 2;
+            const halfH = bbox.height / 2;
+            const x = (bbox.x - halfW) * this.inputSize * scale;
+            const y = (bbox.y - halfH) * this.inputSize * scale;
+            const width = bbox.width * this.inputSize * scale;
+            const height = bbox.height * this.inputSize * scale;
+            
+            // Draw the bounding box
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, width, height);
+            
+            // Draw tiny label with confidence
+            ctx.fillStyle = color;
+            ctx.font = '8px Arial';
+            ctx.fillText(`${Math.round(confidence * 100)}%`, x, y - 1);
+        });
+        
+        if (rawDetections.length > 0) {
+            this.debugLogger.log(`Visualized ${rawDetections.length} raw detections in preview`, 'info');
         }
     }
 } 
