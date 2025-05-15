@@ -165,6 +165,84 @@ footer {
     background-color: #00FF00;
 }
 
+/* Debug Log */
+.debug-log-container {
+    width: 100%;
+    max-width: 500px;
+    margin: 1rem auto;
+    padding: 1rem;
+    background-color: #f8f8f8;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-family: monospace;
+}
+
+.debug-log-container h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: #333;
+    font-size: 1rem;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 0.5rem;
+}
+
+.debug-log {
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: #f0f0f0;
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.debug-log .log-entry {
+    margin-bottom: 0.3rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.debug-log .log-entry:last-child {
+    border-bottom: none;
+}
+
+.debug-log .log-entry.info {
+    color: #0066cc;
+}
+
+.debug-log .log-entry.success {
+    color: #2e7d32;
+}
+
+.debug-log .log-entry.warning {
+    color: #ff9800;
+}
+
+.debug-log .log-entry.error {
+    color: #d32f2f;
+}
+
+.debug-log .log-entry .timestamp {
+    color: #666;
+    margin-right: 0.5rem;
+}
+
+.small-button {
+    background-color: #e0e0e0;
+    color: #333;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background-color 0.3s;
+}
+
+.small-button:hover {
+    background-color: #d0d0d0;
+}
+
 /* Media Queries */
 @media (max-width: 768px) {
     .camera-controls {

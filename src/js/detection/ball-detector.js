@@ -19,25 +19,98 @@ class BallDetector {
             'coin': '#00FF00'       // Green for coins
         };
         this.inputSize = 640; // YOLO model input size
+        
+        // Add debug logger
+        this.debugLogger = this.getDebugLogger();
+    }
+    
+    /**
+     * Get reference to debug logger
+     * @returns {Object} Debug logger object
+     */
+    getDebugLogger() {
+        const logElement = document.getElementById('debug-log');
+        
+        if (!logElement) {
+            console.warn('Debug log element not found');
+            return {
+                log: (message, type = 'info') => console.log(message),
+                clear: () => {}
+            };
+        }
+        
+        return {
+            log: (message, type = 'info') => {
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${type}`;
+                
+                const timestamp = document.createElement('span');
+                timestamp.className = 'timestamp';
+                timestamp.textContent = new Date().toLocaleTimeString();
+                
+                const content = document.createElement('span');
+                content.className = 'content';
+                content.textContent = message;
+                
+                entry.appendChild(timestamp);
+                entry.appendChild(content);
+                
+                logElement.appendChild(entry);
+                logElement.scrollTop = logElement.scrollHeight;
+                
+                // Also log to console
+                console.log(`[${type.toUpperCase()}] ${message}`);
+            },
+            clear: () => {
+                logElement.innerHTML = '';
+            }
+        };
     }
     
     /**
      * Initialize the detector and load the YOLO model
      */
     async initialize() {
-        if (this.isModelLoaded || this.modelLoading) return;
+        if (this.isModelLoaded) {
+            this.debugLogger.log('Model already loaded, skipping initialization', 'info');
+            return;
+        }
+        
+        if (this.modelLoading) {
+            this.debugLogger.log('Model is currently loading, please wait...', 'info');
+            return;
+        }
         
         this.modelLoading = true;
+        this.debugLogger.log('Starting to load YOLO detection model...', 'info');
         
         try {
-            console.log('Loading YOLO detection model...');
+            this.debugLogger.log(`Loading model from path: ${this.modelPath}`, 'info');
             
             // Load the model
+            const startTime = performance.now();
             this.model = await tf.loadGraphModel(this.modelPath);
+            const loadTime = Math.round(performance.now() - startTime);
+            
+            this.debugLogger.log(`Model loaded in ${loadTime}ms, warming up...`, 'info');
             
             // Warm up the model by running a prediction on a dummy tensor
             const dummyInput = tf.zeros([1, this.inputSize, this.inputSize, 3]);
+            this.debugLogger.log('Created dummy input tensor', 'info');
+            
+            const warmupStartTime = performance.now();
             const warmupResult = await this.model.executeAsync(dummyInput);
+            const warmupTime = Math.round(performance.now() - warmupStartTime);
+            
+            // Log tensor shapes
+            if (Array.isArray(warmupResult)) {
+                this.debugLogger.log(`Model outputs ${warmupResult.length} tensors`, 'info');
+                warmupResult.forEach((tensor, i) => {
+                    this.debugLogger.log(`Output tensor ${i} shape: ${tensor.shape}`, 'info');
+                });
+            } else {
+                this.debugLogger.log(`Model output shape: ${warmupResult.shape}`, 'info');
+            }
             
             // Dispose of the tensors to free memory
             dummyInput.dispose();
@@ -48,8 +121,9 @@ class BallDetector {
             }
             
             this.isModelLoaded = true;
-            console.log('YOLO detection model loaded successfully');
+            this.debugLogger.log(`Model warmed up in ${warmupTime}ms and ready for inference!`, 'success');
         } catch (error) {
+            this.debugLogger.log(`Error loading model: ${error.message}`, 'error');
             console.error('Error loading YOLO detection model:', error);
             alert('Failed to load the detection model. Please check your internet connection and try again.');
         } finally {
@@ -65,20 +139,23 @@ class BallDetector {
     async detectObjects(imageElement) {
         if (!this.isModelLoaded) {
             try {
+                this.debugLogger.log('Model not loaded yet, initializing...', 'warning');
                 await this.initialize();
             } catch (error) {
+                this.debugLogger.log(`Failed to initialize model: ${error.message}`, 'error');
                 console.error('Failed to initialize model:', error);
                 return [];
             }
         }
         
         if (!this.isModelLoaded) {
+            this.debugLogger.log('Model failed to load, cannot perform detection', 'error');
             console.warn('Model not loaded yet, cannot perform detection');
             return [];
         }
         
         try {
-            console.log('Starting object detection...');
+            this.debugLogger.log('Starting object detection...', 'info');
             
             // Create a temporary canvas to properly resize and format the image
             const tempCanvas = document.createElement('canvas');
@@ -87,10 +164,7 @@ class BallDetector {
             const tempCtx = tempCanvas.getContext('2d');
             
             // Log image dimensions to help with debugging
-            console.log('Original image dimensions:', {
-                width: imageElement.width,
-                height: imageElement.height
-            });
+            this.debugLogger.log(`Original image dimensions: ${imageElement.width}x${imageElement.height}`, 'info');
             
             // Draw the image on the temporary canvas with proper dimension handling
             // This preserves aspect ratio by fitting the image within the input size dimensions
@@ -122,16 +196,44 @@ class BallDetector {
                 renderHeight
             );
             
-            // Visualize the processed image for debugging (uncomment if needed)
-            // document.body.appendChild(tempCanvas);
+            // Debug visualization (optional)
+            const debugContainer = document.getElementById('debug-log-container');
+            if (debugContainer) {
+                // Create a small preview of the processed image
+                const previewCanvas = document.createElement('canvas');
+                previewCanvas.width = 150;
+                previewCanvas.height = 150;
+                previewCanvas.style.display = 'block';
+                previewCanvas.style.margin = '10px auto';
+                previewCanvas.style.border = '1px solid #ddd';
+                
+                const previewCtx = previewCanvas.getContext('2d');
+                previewCtx.drawImage(tempCanvas, 0, 0, 150, 150);
+                
+                // Add a heading
+                const previewLabel = document.createElement('div');
+                previewLabel.textContent = 'Model Input Preview:';
+                previewLabel.style.fontSize = '0.8rem';
+                previewLabel.style.textAlign = 'center';
+                previewLabel.style.marginTop = '8px';
+                
+                // Check if a preview already exists and remove it
+                const existingPreview = document.getElementById('model-input-preview');
+                if (existingPreview) {
+                    existingPreview.remove();
+                }
+                
+                // Create a container for the preview
+                const previewContainer = document.createElement('div');
+                previewContainer.id = 'model-input-preview';
+                previewContainer.appendChild(previewLabel);
+                previewContainer.appendChild(previewCanvas);
+                
+                // Add the preview after the log
+                debugContainer.appendChild(previewContainer);
+            }
             
-            console.log('Processed image for model input:', {
-                inputSize: this.inputSize,
-                renderWidth,
-                renderHeight,
-                offsetX,
-                offsetY
-            });
+            this.debugLogger.log(`Processed image: ${Math.round(renderWidth)}x${Math.round(renderHeight)} with offsets (${Math.round(offsetX)},${Math.round(offsetY)})`, 'info');
             
             // Create a tensor from the properly formatted image
             const imageTensor = tf.tidy(() => {
@@ -141,24 +243,29 @@ class BallDetector {
                     .expandDims(0);
             });
             
-            console.log('Running model inference...');
+            this.debugLogger.log('Running model inference...', 'info');
             
             // Run the model on the tensor
+            const startTime = performance.now();
             const result = await this.model.executeAsync(imageTensor);
+            const inferenceTime = Math.round(performance.now() - startTime);
             
-            console.log('Model inference complete, processing results...');
+            this.debugLogger.log(`Model inference completed in ${inferenceTime}ms`, 'success');
             
             // Log the shape of the result to understand the output format
             if (Array.isArray(result)) {
-                result.forEach((t, i) => console.log(`Result tensor ${i} shape:`, t.shape));
+                this.debugLogger.log(`Model returned ${result.length} output tensors`, 'info');
+                result.forEach((t, i) => {
+                    this.debugLogger.log(`Result tensor ${i} shape: ${t.shape}`, 'info');
+                });
             } else {
-                console.log('Result shape:', result.shape);
+                this.debugLogger.log(`Result shape: ${result.shape}`, 'info');
             }
             
             // Process the result to get detections
             let detections = await this.processOutput(result, imageElement.width, imageElement.height, offsetX, offsetY, renderWidth, renderHeight);
             
-            console.log('Detections found:', detections);
+            this.debugLogger.log(`Detection complete: found ${detections.length} objects`, detections.length > 0 ? 'success' : 'warning');
             
             // Clean up tensors to prevent memory leaks
             imageTensor.dispose();
@@ -173,6 +280,7 @@ class BallDetector {
             
             return detections;
         } catch (error) {
+            this.debugLogger.log(`Error during object detection: ${error.message}`, 'error');
             console.error('Error during object detection:', error);
             return [];
         }
@@ -194,15 +302,16 @@ class BallDetector {
             if (Array.isArray(output)) {
                 // Log tensor shapes to debug
                 output.forEach((t, i) => {
-                    console.log(`Output tensor ${i} shape:`, t.shape);
+                    this.debugLogger.log(`Processing output tensor ${i} with shape: ${t.shape}`, 'info');
                 });
                 
                 if (output.length >= 1) {
                     // Get the first tensor as array (likely contains all we need)
                     const predictions = await output[0].array();
-                    console.log('Processing predictions array of shape:', predictions.length, 'x', predictions[0].length);
+                    this.debugLogger.log(`Processing predictions array of shape: ${predictions.length}x${predictions[0].length}`, 'info');
                     
                     const detections = [];
+                    let lowConfidenceCount = 0;
                     
                     // Process each prediction in the output tensor
                     for (let i = 0; i < predictions[0].length; i++) {
@@ -214,9 +323,6 @@ class BallDetector {
                         const boxWidth = prediction[2]; // width (normalized 0-1)
                         const boxHeight = prediction[3]; // height (normalized 0-1)
                         const confidence = prediction[4]; // object confidence
-                        
-                        // Skip low confidence detections
-                        if (confidence < this.detectionThreshold) continue;
                         
                         // Find highest scoring class
                         let maxClassScore = 0;
@@ -230,8 +336,26 @@ class BallDetector {
                             }
                         }
                         
+                        // Log raw detection data for debugging
+                        const combinedScore = confidence * maxClassScore;
+                        if (detectedClass >= 0) {
+                            const className = this.classNames[detectedClass] || `unknown_${detectedClass}`;
+                            
+                            // Log all potential detections with scores for debugging
+                            const scoreLog = `Potential ${className}: confidence=${confidence.toFixed(3)}, class_score=${maxClassScore.toFixed(3)}, combined=${combinedScore.toFixed(3)}`;
+                            
+                            if (combinedScore < this.detectionThreshold) {
+                                lowConfidenceCount++;
+                                this.debugLogger.log(`${scoreLog} (below threshold)`, 'warning');
+                            } else {
+                                this.debugLogger.log(scoreLog, 'info');
+                            }
+                        }
+                        
+                        // Skip low confidence detections
+                        if (confidence < this.detectionThreshold) continue;
+                        
                         // Check if we have a valid detection
-                        // Use just the object confidence if class scores are not reliable
                         if (detectedClass in this.classNames) {
                             // Convert normalized box coordinates (0-1) to pixel coordinates in the model input space
                             const halfW = boxWidth / 2;
@@ -251,6 +375,7 @@ class BallDetector {
                             // Skip detections that fall outside the valid image area (in padding)
                             if (modelX < -modelWidth/2 || modelY < -modelHeight/2 || 
                                 modelX > renderWidth + modelWidth/2 || modelY > renderHeight + modelHeight/2) {
+                                this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls in padding area, skipping`, 'warning');
                                 continue;
                             }
                             
@@ -276,21 +401,22 @@ class BallDetector {
                                 }
                             });
                             
-                            console.log(`Detection ${i}: class=${this.classNames[detectedClass]}, conf=${confidence * maxClassScore}, bbox=`, {
-                                x: finalX,
-                                y: finalY,
-                                width: finalWidth,
-                                height: finalHeight
-                            });
+                            this.debugLogger.log(`Valid detection ${i}: class=${this.classNames[detectedClass]}, conf=${(confidence * maxClassScore).toFixed(3)}`, 'success');
                         }
                     }
                     
+                    if (lowConfidenceCount > 0) {
+                        this.debugLogger.log(`Found ${lowConfidenceCount} low-confidence detections below threshold (${this.detectionThreshold})`, 'warning');
+                    }
+                    
                     return detections;
+                } else {
+                    this.debugLogger.log('Output array is empty, no predictions available', 'warning');
                 }
             } else {
                 // Single tensor output
                 const predictions = await output.array();
-                console.log('Single tensor output with shape:', output.shape);
+                this.debugLogger.log(`Single tensor output with shape: ${output.shape}`, 'info');
                 
                 // Similar processing as above...
                 // (implementation depends on model output format)
@@ -298,6 +424,7 @@ class BallDetector {
                 return []; // Placeholder, implement based on model format
             }
         } catch (error) {
+            this.debugLogger.log(`Error processing model output: ${error.message}`, 'error');
             console.error('Error processing model output:', error);
             console.error('Output shapes:', Array.isArray(output) ? 
                 output.map(t => t.shape) : output.shape);
@@ -346,5 +473,20 @@ class BallDetector {
         
         // Restore original context state
         ctx.restore();
+        
+        // Log to debug log
+        if (detections.length === 0) {
+            this.debugLogger.log('No objects detected in the image', 'warning');
+        } else {
+            const ballCount = detections.filter(d => d.class === 'ball_golf').length;
+            const coinCount = detections.filter(d => d.class === 'coin').length;
+            
+            if (ballCount > 0) {
+                this.debugLogger.log(`Drew ${ballCount} golf ball bounding boxes`, 'success');
+            }
+            if (coinCount > 0) {
+                this.debugLogger.log(`Drew ${coinCount} coin bounding boxes`, 'success');
+            }
+        }
     }
 } 

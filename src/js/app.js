@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const backToLiveBtn = document.getElementById('back-to-live-button');
     const analyzeBtn = document.getElementById('analyze-button');
     const loadSampleBtn = document.getElementById('load-sample-button');
+    const clearDebugLogBtn = document.getElementById('clear-debug-log');
     
     console.log('Elements found:', {
         startCameraBtn,
@@ -54,7 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
         newCaptureBtn,
         backToLiveBtn,
         analyzeBtn,
-        loadSampleBtn
+        loadSampleBtn,
+        clearDebugLogBtn
     });
     
     // Initialize event listeners
@@ -261,6 +263,30 @@ document.addEventListener('DOMContentLoaded', () => {
         uiController.resetUI();
         cameraController.startVideoDisplay(); // Resume video display
     });
+    
+    // Clear debug log button event listener
+    if (clearDebugLogBtn) {
+        clearDebugLogBtn.addEventListener('click', () => {
+            console.log('Clear debug log button clicked');
+            
+            // Clear the debug log element
+            const debugLogElement = document.getElementById('debug-log');
+            if (debugLogElement) {
+                debugLogElement.innerHTML = '';
+            }
+            
+            // Also try to use the ballDetector's logger if available
+            if (ballDetector && ballDetector.debugLogger && typeof ballDetector.debugLogger.clear === 'function') {
+                ballDetector.debugLogger.clear();
+            }
+            
+            // Remove any model input preview
+            const modelPreview = document.getElementById('model-input-preview');
+            if (modelPreview) {
+                modelPreview.remove();
+            }
+        });
+    }
     
     console.log('Event listeners attached');
 }); 
