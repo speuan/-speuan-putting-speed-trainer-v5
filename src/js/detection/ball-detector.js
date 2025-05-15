@@ -396,53 +396,59 @@ class BallDetector {
                     
                     // Check if we have a valid detection
                     if (detectedClass in this.classNames) {
-                        // FIXED COORDINATE TRANSFORMATION:
+                        // CRITICAL FIX FOR COORDINATE TRANSFORMATION:
                         
-                        // 1. Calculate the center position in the letterboxed input (0-640)
-                        const centerX = boxX * this.inputSize; // x center in pixels (0-640)
-                        const centerY = boxY * this.inputSize; // y center in pixels (0-640)
+                        // Explicit Number conversion to avoid string concatenation issues
+                        const boxXNum = Number(boxX);
+                        const boxYNum = Number(boxY);
+                        const boxWidthNum = Number(boxWidth);
+                        const boxHeightNum = Number(boxHeight);
+                        const inputSize = Number(this.inputSize);
+                        const offsetXNum = Number(offsetX);
+                        const offsetYNum = Number(offsetY);
                         
-                        // 2. Calculate the width and height in pixels
-                        const widthPx = boxWidth * this.inputSize;
-                        const heightPx = boxHeight * this.inputSize;
+                        // 1. Convert to input space (0-640)
+                        const centerX = boxXNum * inputSize;
+                        const centerY = boxYNum * inputSize;
+                        const widthPx = boxWidthNum * inputSize;
+                        const heightPx = boxHeightNum * inputSize;
                         
-                        // 3. Calculate the top-left corner in the input space
+                        // 2. Calculate top-left for bbox
                         const inputLeft = centerX - (widthPx / 2);
                         const inputTop = centerY - (heightPx / 2);
                         
-                        // 4. Adjust for letterboxing offsets to get image space coordinates
-                        const imageSpaceX = inputLeft - offsetX;
-                        const imageSpaceY = inputTop - offsetY;
+                        // 3. Adjust for letterboxing offsets
+                        const imageSpaceX = inputLeft - offsetXNum;
+                        const imageSpaceY = inputTop - offsetYNum;
                         
-                        // Log the corrected boundary check values
-                        this.debugLogger.log(`Detection ${i} boundary check: 
-                            boxX=${boxX.toFixed(3)}, boxY=${boxY.toFixed(3)},
-                            centerX=${Math.round(centerX)}, centerY=${Math.round(centerY)},
-                            inputLeft=${Math.round(inputLeft)}, inputTop=${Math.round(inputTop)},
-                            imageSpaceX=${Math.round(imageSpaceX)}, imageSpaceY=${Math.round(imageSpaceY)}, 
-                            width=${Math.round(widthPx)}, height=${Math.round(heightPx)}, 
-                            renderWidth=${Math.round(renderWidth)}, renderHeight=${Math.round(renderHeight)}`, 'info');
-                        
-                        // Skip detections that fall completely outside the valid image area
+                        // 4. Debug logs with explicit decimal places (avoid scientific notation)
+                        this.debugLogger.log(`Detection ${i} coordinates: 
+                            normalized: (${boxXNum.toFixed(4)}, ${boxYNum.toFixed(4)})
+                            input_space center: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})
+                            input_space top-left: (${inputLeft.toFixed(1)}, ${inputTop.toFixed(1)})
+                            image_space: (${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})
+                            size: ${widthPx.toFixed(1)} x ${heightPx.toFixed(1)}
+                            render area: ${renderWidth} x ${renderHeight}`, 'info');
+                            
+                        // 5. Boundary check
                         if ((imageSpaceX + widthPx < 0) || 
                             (imageSpaceX > renderWidth) || 
                             (imageSpaceY + heightPx < 0) || 
                             (imageSpaceY > renderHeight)) {
-                            this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls completely outside the image area, skipping`, 'warning');
+                            this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) outside image area, skipping`, 'warning');
                             continue;
                         }
                         
-                        // Scale from the rendered image size to original image size
+                        // 6. Scale to original image
                         const xScale = originalWidth / renderWidth;
                         const yScale = originalHeight / renderHeight;
                         
-                        // Calculate final coordinates in the original image
                         const finalX = imageSpaceX * xScale;
                         const finalY = imageSpaceY * yScale;
                         const finalWidth = widthPx * xScale;
                         const finalHeight = heightPx * yScale;
                         
-                        // Add to detections
+                        // 7. Add to detections
                         detections.push({
                             class: this.classNames[detectedClass],
                             confidence: maxClassScore, 
@@ -546,45 +552,51 @@ class BallDetector {
                         if (detectedClass in this.classNames) {
                             // FIXED COORDINATE TRANSFORMATION:
                             
-                            // 1. Calculate the center position in the letterboxed input (0-640)
-                            const centerX = boxX * this.inputSize; // x center in pixels (0-640)
-                            const centerY = boxY * this.inputSize; // y center in pixels (0-640)
+                            // Explicit Number conversion to avoid string concatenation issues
+                            const boxXNum = Number(boxX);
+                            const boxYNum = Number(boxY);
+                            const boxWidthNum = Number(boxWidth);
+                            const boxHeightNum = Number(boxHeight);
+                            const inputSize = Number(this.inputSize);
+                            const offsetXNum = Number(offsetX);
+                            const offsetYNum = Number(offsetY);
                             
-                            // 2. Calculate the width and height in pixels
-                            const widthPx = boxWidth * this.inputSize;
-                            const heightPx = boxHeight * this.inputSize;
+                            // 1. Convert to input space (0-640)
+                            const centerX = boxXNum * inputSize;
+                            const centerY = boxYNum * inputSize;
+                            const widthPx = boxWidthNum * inputSize;
+                            const heightPx = boxHeightNum * inputSize;
                             
-                            // 3. Calculate the top-left corner in the input space
+                            // 2. Calculate top-left for bbox
                             const inputLeft = centerX - (widthPx / 2);
                             const inputTop = centerY - (heightPx / 2);
                             
-                            // 4. Adjust for letterboxing offsets to get image space coordinates
-                            const imageSpaceX = inputLeft - offsetX;
-                            const imageSpaceY = inputTop - offsetY;
+                            // 3. Adjust for letterboxing offsets
+                            const imageSpaceX = inputLeft - offsetXNum;
+                            const imageSpaceY = inputTop - offsetYNum;
                             
-                            // Log the corrected boundary check values
-                            this.debugLogger.log(`Detection ${i} boundary check: 
-                                boxX=${boxX.toFixed(3)}, boxY=${boxY.toFixed(3)},
-                                centerX=${Math.round(centerX)}, centerY=${Math.round(centerY)},
-                                inputLeft=${Math.round(inputLeft)}, inputTop=${Math.round(inputTop)},
-                                imageSpaceX=${Math.round(imageSpaceX)}, imageSpaceY=${Math.round(imageSpaceY)}, 
-                                width=${Math.round(widthPx)}, height=${Math.round(heightPx)}, 
-                                renderWidth=${Math.round(renderWidth)}, renderHeight=${Math.round(renderHeight)}`, 'info');
-                            
-                            // Skip detections that fall completely outside the valid image area
+                            // 4. Debug logs with explicit decimal places (avoid scientific notation)
+                            this.debugLogger.log(`Detection ${i} coordinates: 
+                                normalized: (${boxXNum.toFixed(4)}, ${boxYNum.toFixed(4)})
+                                input_space center: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})
+                                input_space top-left: (${inputLeft.toFixed(1)}, ${inputTop.toFixed(1)})
+                                image_space: (${imageSpaceX.toFixed(1)}, ${imageSpaceY.toFixed(1)})
+                                size: ${widthPx.toFixed(1)} x ${heightPx.toFixed(1)}
+                                render area: ${renderWidth} x ${renderHeight}`, 'info');
+                                
+                            // 5. Boundary check
                             if ((imageSpaceX + widthPx < 0) || 
                                 (imageSpaceX > renderWidth) || 
                                 (imageSpaceY + heightPx < 0) || 
                                 (imageSpaceY > renderHeight)) {
-                                this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls completely outside the image area, skipping`, 'warning');
+                                this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) outside image area, skipping`, 'warning');
                                 continue;
                             }
                             
-                            // Scale from the rendered image size to original image size
+                            // 6. Scale to original image
                             const xScale = originalWidth / renderWidth;
                             const yScale = originalHeight / renderHeight;
                             
-                            // Calculate final coordinates in the original image
                             const finalX = imageSpaceX * xScale;
                             const finalY = imageSpaceY * yScale;
                             const finalWidth = widthPx * xScale;
@@ -698,7 +710,7 @@ class BallDetector {
         if (!previewCanvas) return;
         
         const ctx = previewCanvas.getContext('2d');
-        const scale = previewCanvas.width / this.inputSize; // Scale from model size to preview size
+        const scale = Number(previewCanvas.width) / Number(this.inputSize); // Scale from model size to preview size
         
         rawDetections.forEach(detection => {
             const { bbox, class: classId, confidence } = detection;
@@ -714,13 +726,20 @@ class BallDetector {
                 color = className === 'ball_golf' ? 'rgba(255, 165, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
             }
             
-            // FIXED: Calculate the center position in scaled preview coordinates
-            const centerX = bbox.x * this.inputSize * scale;
-            const centerY = bbox.y * this.inputSize * scale;
+            // Force numeric values to avoid string concatenation
+            const boxX = Number(bbox.x);
+            const boxY = Number(bbox.y);
+            const boxWidth = Number(bbox.width);
+            const boxHeight = Number(bbox.height);
+            const inputSize = Number(this.inputSize);
+            
+            // Calculate center position in scaled preview coordinates
+            const centerX = boxX * inputSize * scale;
+            const centerY = boxY * inputSize * scale;
             
             // Calculate width and height in preview scale
-            const width = bbox.width * this.inputSize * scale;
-            const height = bbox.height * this.inputSize * scale;
+            const width = boxWidth * inputSize * scale;
+            const height = boxHeight * inputSize * scale;
             
             // Calculate the top-left corner for drawing
             const x = centerX - (width / 2);
