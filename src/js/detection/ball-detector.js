@@ -8,7 +8,7 @@ class BallDetector {
         this.model = null;
         this.isModelLoaded = false;
         this.modelLoading = false;
-        this.detectionThreshold = 0.15; // Lower threshold even more for better detection
+        this.detectionThreshold = 0.05; // Lower threshold to improve detection sensitivity
         this.modelPath = './my_model_web_model_5/model.json';
         this.classNames = {
             0: 'ball_golf',
@@ -299,7 +299,128 @@ class BallDetector {
      */
     async processOutput(output, originalWidth, originalHeight, offsetX, offsetY, renderWidth, renderHeight) {
         try {
-            if (Array.isArray(output)) {
+            // Handle the specific output shape [1,6,8400] (YOLOv8 format)
+            if (!Array.isArray(output) && output.shape.length === 3 && output.shape[2] === 8400) {
+                this.debugLogger.log(`Processing YOLOv8 style output with shape: ${output.shape}`, 'info');
+                
+                // Get the tensor data
+                const predictions = await output.array();
+                
+                // For YOLOv8, the tensor is [1, 6, 8400] where:
+                // - First dimension is batch (1)
+                // - Second dimension is [xywh + num_classes] (4 box coords + 2 classes in our case)
+                // - Third dimension is the number of anchor points
+                
+                const numClasses = predictions[0].length - 4; // Subtract 4 for x,y,w,h
+                this.debugLogger.log(`Found ${numClasses} classes in model output`, 'info');
+                
+                const detections = [];
+                let lowConfidenceCount = 0;
+                
+                // Transpose the predictions to make processing easier
+                // From [1, 6, 8400] to [8400, 6]
+                const transposed = [];
+                for (let i = 0; i < predictions[0][0].length; i++) {
+                    const item = [];
+                    for (let j = 0; j < predictions[0].length; j++) {
+                        item.push(predictions[0][j][i]);
+                    }
+                    transposed.push(item);
+                }
+                
+                this.debugLogger.log(`Processed ${transposed.length} potential detections`, 'info');
+                
+                // Now process each detection
+                for (let i = 0; i < transposed.length; i++) {
+                    // Find the class with highest confidence
+                    let maxClassScore = 0;
+                    let detectedClass = -1;
+                    
+                    for (let j = 4; j < 4 + numClasses; j++) {
+                        if (transposed[i][j] > maxClassScore) {
+                            maxClassScore = transposed[i][j];
+                            detectedClass = j - 4; // Adjust to get 0-based class index
+                        }
+                    }
+                    
+                    // Skip if no class detected or confidence is too low
+                    if (detectedClass === -1 || maxClassScore < this.detectionThreshold) {
+                        if (maxClassScore > 0.01) { // Log only somewhat significant detections to avoid noise
+                            lowConfidenceCount++;
+                            this.debugLogger.log(`Low confidence detection: class=${detectedClass in this.classNames ? this.classNames[detectedClass] : 'unknown'}, score=${maxClassScore.toFixed(3)} (below threshold)`, 'warning');
+                        }
+                        continue;
+                    }
+                    
+                    // Get box coordinates (x, y, w, h)
+                    const boxX = transposed[i][0]; // center x (normalized 0-1)
+                    const boxY = transposed[i][1]; // center y (normalized 0-1)
+                    const boxWidth = transposed[i][2]; // width (normalized 0-1)
+                    const boxHeight = transposed[i][3]; // height (normalized 0-1)
+                    
+                    // Log detection details
+                    const className = this.classNames[detectedClass] || `unknown_${detectedClass}`;
+                    this.debugLogger.log(`Potential ${className}: x=${boxX.toFixed(3)}, y=${boxY.toFixed(3)}, w=${boxWidth.toFixed(3)}, h=${boxHeight.toFixed(3)}, conf=${maxClassScore.toFixed(3)}`, 'info');
+                    
+                    // Check if we have a valid detection
+                    if (detectedClass in this.classNames) {
+                        // Convert normalized box coordinates (0-1) to pixel coordinates in the model input space
+                        const halfW = boxWidth / 2;
+                        const halfH = boxHeight / 2;
+                        
+                        // Get coordinates in the model input space (before applying offsets)
+                        let modelX = (boxX - halfW) * this.inputSize;
+                        let modelY = (boxY - halfH) * this.inputSize;
+                        let modelWidth = boxWidth * this.inputSize;
+                        let modelHeight = boxHeight * this.inputSize;
+                        
+                        // Adjust for the offsets added during image preprocessing
+                        // This converts from model input space to the actual image space within the padded input
+                        modelX = modelX - offsetX;
+                        modelY = modelY - offsetY;
+                        
+                        // Skip detections that fall outside the valid image area (in padding)
+                        if (modelX < -modelWidth/2 || modelY < -modelHeight/2 || 
+                            modelX > renderWidth + modelWidth/2 || modelY > renderHeight + modelHeight/2) {
+                            this.debugLogger.log(`Detection ${i} (${this.classNames[detectedClass]}) falls in padding area, skipping`, 'warning');
+                            continue;
+                        }
+                        
+                        // Scale from the rendered image size to original image size
+                        const xScale = originalWidth / renderWidth;
+                        const yScale = originalHeight / renderHeight;
+                        
+                        // Calculate final coordinates in the original image
+                        const finalX = modelX * xScale;
+                        const finalY = modelY * yScale;
+                        const finalWidth = modelWidth * xScale;
+                        const finalHeight = modelHeight * yScale;
+                        
+                        // Add to detections
+                        detections.push({
+                            class: this.classNames[detectedClass],
+                            confidence: maxClassScore, 
+                            bbox: {
+                                x: Math.max(0, finalX),
+                                y: Math.max(0, finalY),
+                                width: finalWidth,
+                                height: finalHeight
+                            }
+                        });
+                        
+                        this.debugLogger.log(`Valid detection ${i}: class=${this.classNames[detectedClass]}, conf=${maxClassScore.toFixed(3)}`, 'success');
+                    }
+                }
+                
+                if (lowConfidenceCount > 0) {
+                    this.debugLogger.log(`Found ${lowConfidenceCount} low-confidence detections below threshold (${this.detectionThreshold})`, 'warning');
+                }
+                
+                return detections;
+            }
+            // Keep the existing handling for other formats
+            else if (Array.isArray(output)) {
+                // Original array processing code...
                 // Log tensor shapes to debug
                 output.forEach((t, i) => {
                     this.debugLogger.log(`Processing output tensor ${i} with shape: ${t.shape}`, 'info');
@@ -414,14 +535,9 @@ class BallDetector {
                     this.debugLogger.log('Output array is empty, no predictions available', 'warning');
                 }
             } else {
-                // Single tensor output
-                const predictions = await output.array();
-                this.debugLogger.log(`Single tensor output with shape: ${output.shape}`, 'info');
-                
-                // Similar processing as above...
-                // (implementation depends on model output format)
-                
-                return []; // Placeholder, implement based on model format
+                // Single tensor output with different format
+                this.debugLogger.log(`Unrecognized output format with shape: ${output.shape}`, 'warning');
+                return []; // We can't process this format yet
             }
         } catch (error) {
             this.debugLogger.log(`Error processing model output: ${error.message}`, 'error');
