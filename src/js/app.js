@@ -46,13 +46,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const newCaptureBtn = document.getElementById('new-capture-button');
     const backToLiveBtn = document.getElementById('back-to-live-button');
     const analyzeBtn = document.getElementById('analyze-button');
+    const loadSampleBtn = document.getElementById('load-sample-button');
     
     console.log('Elements found:', {
         startCameraBtn,
         captureBtn,
         newCaptureBtn,
         backToLiveBtn,
-        analyzeBtn
+        analyzeBtn,
+        loadSampleBtn
     });
     
     // Initialize event listeners
@@ -83,6 +85,30 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Show the captured image in the display canvas
         uiController.showCapturedImage(frame);
+    });
+    
+    // Load sample image button event listener
+    loadSampleBtn.addEventListener('click', async () => {
+        console.log('Load sample image button clicked');
+        try {
+            // Load the sample image
+            const frame = await cameraController.loadSampleImage();
+            
+            // Show the sample image in the display canvas
+            uiController.showCapturedImage(frame);
+            
+            // Start loading the detection model in the background if not already loaded
+            if (!ballDetector.isModelLoaded && !ballDetector.modelLoading) {
+                ballDetector.initialize().then(() => {
+                    console.log('Model preloaded and ready for use');
+                }).catch(err => {
+                    console.error('Error preloading model:', err);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load sample image:', error);
+            alert('Could not load sample image. Please try again.');
+        }
     });
     
     analyzeBtn.addEventListener('click', async () => {

@@ -246,4 +246,61 @@ class CameraController {
         this.capturedFrame = null;
         this.startVideoDisplay();
     }
+    
+    /**
+     * Load a sample image from the assets folder
+     * @returns {Promise<Object>} The captured frame data
+     */
+    async loadSampleImage() {
+        console.log('Loading sample image...');
+        
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                console.log('Sample image loaded', {
+                    width: img.width,
+                    height: img.height
+                });
+                
+                // Set canvas dimensions to match image
+                this.processingCanvas.width = img.width;
+                this.processingCanvas.height = img.height;
+                this.displayCanvas.width = img.width;
+                this.displayCanvas.height = img.height;
+                
+                // Draw the image to the processing canvas
+                this.processingContext.drawImage(img, 0, 0, img.width, img.height);
+                
+                // Get frame data
+                const frame = {
+                    timestamp: Date.now(),
+                    imageData: this.processingContext.getImageData(
+                        0, 
+                        0, 
+                        this.processingCanvas.width, 
+                        this.processingCanvas.height
+                    )
+                };
+                
+                // Store the captured frame
+                this.capturedFrame = frame;
+                
+                // Also draw the frame on the display canvas
+                this.displayContext.putImageData(frame.imageData, 0, 0);
+                
+                // Stop the video display since we now have a still image
+                this.stopVideoDisplay();
+                
+                resolve(frame);
+            };
+            
+            img.onerror = (error) => {
+                console.error('Error loading sample image:', error);
+                reject(error);
+            };
+            
+            // Set the source to the sample image
+            img.src = 'assets/images/0fe53e23-IMG_3884.JPG';
+        });
+    }
 } 

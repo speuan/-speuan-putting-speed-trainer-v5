@@ -14,6 +14,7 @@ class UIController {
         this.backToLiveButton = document.getElementById('back-to-live-button');
         this.newCaptureButton = document.getElementById('new-capture-button');
         this.analyzeButton = document.getElementById('analyze-button');
+        this.loadSampleButton = document.getElementById('load-sample-button');
         
         this.displayContext = this.displayCanvas.getContext('2d');
         
@@ -28,6 +29,7 @@ class UIController {
         console.log('Back to live button:', this.backToLiveButton);
         console.log('New capture button:', this.newCaptureButton);
         console.log('Analyze button:', this.analyzeButton);
+        console.log('Load sample button:', this.loadSampleButton);
     }
     
     /**
@@ -42,6 +44,7 @@ class UIController {
         
         // Show the capture-related buttons, hide the others
         this.captureButton.style.display = 'none';
+        this.loadSampleButton.style.display = 'none';
         this.backToLiveButton.style.display = 'inline-block';
         this.newCaptureButton.style.display = 'inline-block';
         this.analyzeButton.style.display = 'inline-block';
@@ -73,6 +76,7 @@ class UIController {
         
         // Show the camera buttons, hide the capture-related buttons
         this.captureButton.style.display = 'inline-block';
+        this.loadSampleButton.style.display = 'inline-block';
         this.backToLiveButton.style.display = 'none';
         this.newCaptureButton.style.display = 'none';
         this.analyzeButton.style.display = 'none';
