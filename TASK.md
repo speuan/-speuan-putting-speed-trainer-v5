@@ -28,16 +28,12 @@
 
 ## Discovered During Work
 - [ ] Need to create a calibration mode
-- [ ] Need to improve detection performance on mobile devices 
-
-
+- [ ] Need to improve detection performance on mobile devices
 
 
 https://colab.research.google.com/github/EdjeElectronics/Train-and-Deploy-YOLO-Models/blob/main/Train_YOLO_Models.ipynb#scrollTo=zEEObQqoiGrs
 
-
 https://labelstud.io/guide/install.html
-
 
 # Model Conversion Instructions (from remote GitHub)
 
@@ -45,13 +41,20 @@ https://colab.research.google.com/github/EdjeElectronics/Train-and-Deploy-YOLO-M
 
 To convert model
 
-[9] 4s !pip install ultralytics tensorflow tensorflowjs
+[9]
+4s
+!pip install ultralytics tensorflow tensorflowjs
 
-[10] 53s from ultralytics import YOLO
+[10]
+53s
+from ultralytics import YOLO
 
-model = YOLO("/content/my_model/my_model.pt") # Replace with your model name model.export(format="tf") # This will create 'best_saved_model' folder
+model = YOLO("/content/my_model/my_model.pt")  # Replace with your model name
+model.export(format="tf")  # This will create 'best_saved_model' folder
 
-[11] 2s import shutil
+[11]
+2s
+import shutil
 
-Create a zip archive named "my_model_6.zip"
+# Create a zip archive named "my_model_6.zip"
 shutil.make_archive("/content/my_model_6", 'zip', "/content/my_model/my_model_web_model")
