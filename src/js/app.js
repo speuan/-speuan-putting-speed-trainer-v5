@@ -212,7 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (detections.length === 0) {
                 console.log('No objects detected in the image');
-                alert('No golf balls or coins were detected in the image. Try adjusting lighting or camera angle.');
+                // Removed alert for no detections
             } else {
                 // Draw bounding boxes on the detected objects
                 ballDetector.drawDetections(
@@ -222,23 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Update UI to show we're now displaying analyzed image
                 uiController.showAnalyzedImage();
-                
-                // Show a message with the detection count
-                const ballCount = detections.filter(d => d.class === 'ball_golf').length;
-                const coinCount = detections.filter(d => d.class === 'coin').length;
-                
-                let message = '';
-                if (ballCount > 0) {
-                    message += `Detected ${ballCount} golf ball${ballCount > 1 ? 's' : ''}.`;
-                }
-                if (coinCount > 0) {
-                    if (message) message += ' ';
-                    message += `Detected ${coinCount} coin${coinCount > 1 ? 's' : ''}.`;
-                }
-                
-                if (message) {
-                    alert(message);
-                }
+                // Removed detection summary alert
             }
         } catch (error) {
             console.error('Error during analysis:', error);
