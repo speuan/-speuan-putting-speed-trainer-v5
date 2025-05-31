@@ -12,11 +12,17 @@ class BallDetector {
         this.modelPath = './my_model_web_model_6/model.json';
         this.classNames = {
             0: 'ball_golf',
-            1: 'coin'
+            1: 'coin',
+            2: 'marker_blue',
+            3: 'marker_green',
+            4: 'marker_red'
         };
         this.colors = {
             'ball_golf': '#FF0000', // Red for golf balls
-            'coin': '#00FF00'       // Green for coins
+            'coin': '#FFD700',      // Gold for coins
+            'marker_blue': '#0000FF', // Blue for blue markers
+            'marker_green': '#00FF00', // Green for green markers
+            'marker_red': '#FF00FF'   // Magenta for red markers (to distinguish from golf balls)
         };
         this.inputSize = 640; // YOLO model input size
         
