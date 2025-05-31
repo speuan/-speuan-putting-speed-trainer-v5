@@ -1,0 +1,24 @@
+description: Ultralytics my_model model trained on /content/data.yaml
+author: Ultralytics
+date: '2025-05-25T05:03:38.514495'
+version: 8.3.144
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: ball_golf
+  1: coin
+  2: marker_blue
+  3: marker_green
+  4: marker_red
+args:
+  batch: 1
+  half: false
+  int8: false
+  nms: false
+channels: 3
