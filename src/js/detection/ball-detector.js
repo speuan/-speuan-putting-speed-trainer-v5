@@ -9,7 +9,7 @@ class BallDetector {
         this.isModelLoaded = false;
         this.modelLoading = false;
         this.detectionThreshold = 0.6; // Higher threshold to only get high confidence detections
-        this.modelPath = './my_model_web_model_5/model.json';
+        this.modelPath = './my_model_web_model_6/model.json';
         this.classNames = {
             0: 'ball_golf',
             1: 'coin'
