@@ -37,8 +37,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Initialize controllers
     const cameraController = new CameraController();
-    const uiController = new UIController();
     const ballDetector = new BallDetector();
+    const speedCalculator = new SpeedCalculator();
+    const uiController = new UIController();
+    
+    // Connect UI controller to camera controller for tracking integration
+    cameraController.uiController = uiController;
     
     // DOM elements
     const startCameraBtn = document.getElementById('start-camera');
@@ -76,6 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Start camera button clicked');
         try {
             await cameraController.startCamera();
+            uiController.showLiveView();
+            
+            // Start animation loop for live tracking
+            cameraController.animate();
+            
             captureBtn.disabled = false;
             startCameraBtn.disabled = true;
             console.log('Camera started successfully');
@@ -88,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } catch (error) {
             console.error('Failed to start camera:', error);
-            alert('Could not access camera. Please check permissions and try again.');
+            alert('Failed to start camera. Please check permissions and try again.');
         }
     });
     

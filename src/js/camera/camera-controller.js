@@ -211,11 +211,31 @@ class CameraController {
     }
     
     /**
-     * Draw a frame on the display canvas
-     * @param {ImageData} imageData - Frame image data to draw
+     * Draw current frame to display canvas
      */
-    drawFrame(imageData) {
-        this.displayContext.putImageData(imageData, 0, 0);
+    drawFrame() {
+        if (!this.isStreaming || !this.video || !this.displayCanvas) {
+            return;
+        }
+        
+        try {
+            // Draw video frame to processing canvas
+            this.processingContext.drawImage(this.video, 0, 0, this.processingCanvas.width, this.processingCanvas.height);
+            
+            // Get image data
+            const imageData = this.processingContext.getImageData(0, 0, this.processingCanvas.width, this.processingCanvas.height);
+            
+            // Use UI controller's drawFrame method (includes tracking overlays)
+            if (this.uiController && this.uiController.drawFrame) {
+                this.uiController.drawFrame(imageData);
+            } else {
+                // Fallback: draw directly to display canvas
+                this.displayContext.putImageData(imageData, 0, 0);
+            }
+            
+        } catch (error) {
+            console.error('Error drawing frame:', error);
+        }
     }
     
     /**
@@ -302,5 +322,28 @@ class CameraController {
             // Set the source to the sample image
             img.src = 'assets/images/0fe53e23-IMG_3884.JPG';
         });
+    }
+    
+    /**
+     * Animation loop for live camera feed
+     */
+    animate() {
+        if (!this.isStreaming) {
+            return;
+        }
+        
+        try {
+            // Draw video frame to processing canvas
+            this.processingContext.drawImage(this.video, 0, 0, this.processingCanvas.width, this.processingCanvas.height);
+            
+            // Get image data and draw frame (includes tracking overlays)
+            this.drawFrame();
+            
+        } catch (error) {
+            console.error('Error in animation loop:', error);
+        }
+        
+        // Continue animation loop
+        requestAnimationFrame(() => this.animate());
     }
 } 

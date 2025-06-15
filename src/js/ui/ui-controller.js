@@ -15,37 +15,28 @@ class UIController {
         this.newCaptureButton = document.getElementById('new-capture-button');
         this.analyzeButton = document.getElementById('analyze-button');
         this.loadSampleButton = document.getElementById('load-sample-button');
+        
+        // Setup mode buttons
         this.setupMarkersButton = document.getElementById('setup-markers-button');
+        this.confirmSetupButton = document.getElementById('confirm-setup-button');
+        this.cancelSetupButton = document.getElementById('cancel-setup-button');
         this.recalibrateButton = document.getElementById('recalibrate-button');
         
-        this.displayContext = this.displayCanvas.getContext('2d');
-        
-        // Setup mode state
+        // Setup overlay and state
+        this.setupOverlay = document.getElementById('setup-overlay');
         this.isInSetupMode = false;
         this.selectedPoints = [];
-        this.setupOverlay = null;
-        this.setupOverlayContext = null;
         
-        // Flag to track if we're showing a captured image
-        this.isShowingCapturedImage = false;
-        this.isShowingAnalyzedImage = false;
+        // Initialize corner tracker
+        this.cornerTracker = new CornerTracker();
         
-        // Initialize setup overlay
-        this.createSetupOverlay();
+        // Canvas context
+        this.ctx = this.displayCanvas.getContext('2d');
         
-        // Add click handler for point selection
-        this.setupClickHandler();
+        // Bind event handlers
+        this.bindEvents();
         
-        // Log elements to verify they're found
-        console.log('Display canvas:', this.displayCanvas);
-        console.log('Capture button:', this.captureButton);
-        console.log('Start camera button:', this.startCameraButton);
-        console.log('Back to live button:', this.backToLiveButton);
-        console.log('New capture button:', this.newCaptureButton);
-        console.log('Analyze button:', this.analyzeButton);
-        console.log('Load sample button:', this.loadSampleButton);
-        console.log('Setup markers button:', this.setupMarkersButton);
-        console.log('Recalibrate button:', this.recalibrateButton);
+        console.log('UIController initialized');
     }
     
     /**
@@ -327,7 +318,7 @@ class UIController {
         console.log('Showing captured image');
         
         // Draw the image on the display canvas
-        this.displayContext.putImageData(frame.imageData, 0, 0);
+        this.ctx.putImageData(frame.imageData, 0, 0);
         
         // Show the capture-related buttons, hide the others
         this.captureButton.style.display = 'none';
@@ -365,7 +356,7 @@ class UIController {
         console.log('Resetting UI');
         
         // Clear display canvas (the camera will draw to it)
-        this.displayContext.clearRect(0, 0, this.displayCanvas.width, this.displayCanvas.height);
+        this.ctx.clearRect(0, 0, this.displayCanvas.width, this.displayCanvas.height);
         
         // Show the camera buttons, hide the capture-related buttons
         this.captureButton.style.display = 'inline-block';
@@ -382,5 +373,113 @@ class UIController {
         
         this.isShowingCapturedImage = false;
         this.isShowingAnalyzedImage = false;
+    }
+
+    /**
+     * Confirm setup and start tracking
+     */
+    confirmSetup() {
+        if (this.selectedPoints.length !== 4) {
+            alert('Please select all 4 marker points before confirming.');
+            return;
+        }
+        
+        console.log('Confirming setup with points:', this.selectedPoints);
+        
+        try {
+            // Get current frame from display canvas
+            const imageData = this.ctx.getImageData(0, 0, this.displayCanvas.width, this.displayCanvas.height);
+            
+            // Setup corner tracking with selected points
+            this.cornerTracker.setupMarkers(this.selectedPoints, imageData);
+            
+            // Exit setup mode
+            this.exitSetupMode();
+            
+            // Show recalibrate button
+            this.recalibrateButton.style.display = 'inline-block';
+            
+            console.log('Marker tracking setup complete');
+            
+        } catch (error) {
+            console.error('Error setting up marker tracking:', error);
+            alert('Error setting up marker tracking. Please try again.');
+        }
+    }
+
+    /**
+     * Draw frame with overlays
+     * @param {ImageData} imageData - Frame to draw
+     */
+    drawFrame(imageData) {
+        // Draw the image
+        this.ctx.putImageData(imageData, 0, 0);
+        
+        // If corner tracking is active, track markers and draw indicators
+        if (this.cornerTracker.isTracking()) {
+            try {
+                // Track markers in current frame
+                const trackingResults = this.cornerTracker.trackMarkers(imageData);
+                
+                // Draw tracking indicators
+                this.cornerTracker.drawTrackingIndicators(this.ctx);
+                
+                // Log tracking quality for debugging
+                const qualities = this.cornerTracker.getTrackingQuality();
+                const avgQuality = qualities.reduce((sum, q) => sum + q, 0) / qualities.length;
+                if (avgQuality < 0.5) {
+                    console.warn('Low tracking quality:', qualities);
+                }
+                
+            } catch (error) {
+                console.error('Error during marker tracking:', error);
+            }
+        }
+    }
+    
+    /**
+     * Get current marker positions for homography calculation
+     * @returns {Array|null} Array of {x, y} positions or null if not tracking
+     */
+    getCurrentMarkerPositions() {
+        if (this.cornerTracker.isTracking()) {
+            return this.cornerTracker.getCurrentPositions();
+        }
+        return null;
+    }
+    
+    /**
+     * Get tracking quality scores
+     * @returns {Array|null} Array of quality scores (0-1) or null if not tracking
+     */
+    getTrackingQuality() {
+        if (this.cornerTracker.isTracking()) {
+            return this.cornerTracker.getTrackingQuality();
+        }
+        return null;
+    }
+    
+    /**
+     * Check if marker tracking is active
+     * @returns {boolean}
+     */
+    isTrackingActive() {
+        return this.cornerTracker.isTracking();
+    }
+
+    /**
+     * Recalibrate markers
+     */
+    recalibrate() {
+        console.log('Recalibrating markers');
+        
+        // Reset corner tracker
+        this.cornerTracker.reset();
+        
+        // Hide recalibrate button
+        this.recalibrateButton.style.display = 'none';
+        
+        // Start setup mode again
+        this.startSetupMode();
     }
 } 
