@@ -482,4 +482,41 @@ class UIController {
         // Start setup mode again
         this.startSetupMode();
     }
+
+    /**
+     * Show live camera view
+     */
+    showLiveView() {
+        console.log('Showing live view');
+        
+        // Clear display canvas (the camera will draw to it)
+        this.ctx.clearRect(0, 0, this.displayCanvas.width, this.displayCanvas.height);
+        
+        // Show the camera buttons, hide the capture-related buttons
+        this.startCameraButton.style.display = 'none';
+        this.captureButton.style.display = 'inline-block';
+        this.backToLiveButton.style.display = 'none';
+        this.newCaptureButton.style.display = 'none';
+        this.analyzeButton.style.display = 'none';
+        this.loadSampleButton.style.display = 'inline-block';
+        
+        // Show setup button if not in setup mode
+        if (!this.isInSetupMode) {
+            this.setupMarkersButton.style.display = 'inline-block';
+        }
+        
+        // Show recalibrate button if tracking is active
+        if (this.cornerTracker && this.cornerTracker.isTracking()) {
+            this.recalibrateButton.style.display = 'inline-block';
+        }
+        
+        // Reset flags
+        this.isShowingCapturedImage = false;
+        this.isShowingAnalyzedImage = false;
+        
+        // Restart streaming if camera controller is available
+        if (window.cameraController && window.cameraController.video) {
+            window.cameraController.isStreaming = true;
+        }
+    }
 } 

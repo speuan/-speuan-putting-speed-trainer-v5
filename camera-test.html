@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Test</title>
+</head>
+<body>
+    <h1>Camera Test</h1>
+    <button id="startBtn">Start Camera</button>
+    <br><br>
+    <video id="video" width="320" height="240" autoplay></video>
+    <div id="status"></div>
+
+    <script>
+        const video = document.getElementById('video');
+        const startBtn = document.getElementById('startBtn');
+        const status = document.getElementById('status');
+
+        startBtn.addEventListener('click', async () => {
+            status.innerHTML = 'Requesting camera access...';
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 320, height: 240 } 
+                });
+                
+                video.srcObject = stream;
+                status.innerHTML = '✅ Camera working!';
+                startBtn.style.display = 'none';
+                
+            } catch (error) {
+                console.error('Camera error:', error);
+                status.innerHTML = `❌ Camera error: ${error.message}`;
+                
+                // More detailed error info
+                if (error.name === 'NotAllowedError') {
+                    status.innerHTML += '<br>Camera access denied. Please allow camera permissions.';
+                } else if (error.name === 'NotFoundError') {
+                    status.innerHTML += '<br>No camera found.';
+                } else if (error.name === 'NotSupportedError') {
+                    status.innerHTML += '<br>Camera not supported in this browser.';
+                }
+            }
+        });
+
+        // Check if getUserMedia is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            status.innerHTML = '❌ getUserMedia not supported in this browser';
+            startBtn.disabled = true;
+        }
+    </script>
+</body>
+</html> 

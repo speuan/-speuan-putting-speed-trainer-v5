@@ -44,6 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Connect UI controller to camera controller for tracking integration
     cameraController.uiController = uiController;
     
+    // Make camera controller globally accessible for UI controller
+    window.cameraController = cameraController;
+    
     // DOM elements
     const startCameraBtn = document.getElementById('start-camera');
     const captureBtn = document.getElementById('capture-button');
@@ -122,7 +125,13 @@ document.addEventListener('DOMContentLoaded', () => {
     backToLiveBtn.addEventListener('click', () => {
         console.log('Back to live button clicked');
         // Reset UI to show live feed
-        uiController.resetUI();
+        uiController.showLiveView();
+        
+        // Restart animation loop if camera is available
+        if (cameraController.video && cameraController.stream) {
+            cameraController.isStreaming = true;
+            cameraController.animate();
+        }
     });
     
     analyzeBtn.addEventListener('click', async () => {
