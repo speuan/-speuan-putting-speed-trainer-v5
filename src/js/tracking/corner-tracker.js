@@ -4,24 +4,29 @@
  */
 
 class CornerTracker {
-    constructor() {
+    constructor(debugMode = true) {
         this.markerRegions = [];        // Stored reference regions around each marker
         this.referenceCorners = [];     // Corner features for each region
         this.currentPositions = [];     // Current tracked positions
         this.lastKnownPositions = [];   // Last known good positions
         this.trackingQuality = [];      // Quality scores for each marker
         
-        // Configuration
-        this.regionSize = 40;           // Size of region to analyze (40x40 pixels)
-        this.searchRadius = 30;         // Pixels to search around last position
-        this.cornerThreshold = 0.01;    // Threshold for corner detection
-        this.matchThreshold = 0.7;      // Minimum correlation for good match
+        // Tuned configuration
+        this.regionSize = 120;           // Even larger region
+        this.searchRadius = 50;          // Larger search area
+        this.cornerThreshold = 0.0001;   // Even lower threshold
+        this.matchThreshold = 0.4;       // Lower match threshold
+        
+        // Debug
+        this.debugMode = debugMode;
+        this.lastDebugCorners = [];
+        this.lastDebugRegions = [];
         
         // State
         this.isSetup = false;
         this.setupImageData = null;
         
-        console.log('CornerTracker initialized');
+        console.log('CornerTracker initialized (debugMode:', debugMode, ')');
     }
     
     /**
@@ -41,7 +46,8 @@ class CornerTracker {
         this.referenceCorners = [];
         this.currentPositions = [...points];
         this.lastKnownPositions = [...points];
-        this.trackingQuality = [1.0, 1.0, 1.0, 1.0]; // Start with perfect quality
+        this.trackingQuality = [1.0, 1.0, 1.0, 1.0];
+        this.lastDebugRegions = [];
         
         // Extract reference regions and detect corners for each marker
         points.forEach((point, index) => {
@@ -51,6 +57,16 @@ class CornerTracker {
                 
                 this.markerRegions.push(region);
                 this.referenceCorners.push(corners);
+                
+                // Debug: store region boundary for visualization
+                if (this.debugMode) {
+                    this.lastDebugRegions.push({
+                        x: point.x,
+                        y: point.y,
+                        w: region.width,
+                        h: region.height
+                    });
+                }
                 
                 console.log(`Marker ${index + 1}: Found ${corners.length} corners at (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`);
             } catch (error) {
@@ -128,56 +144,31 @@ class CornerTracker {
                 quality: 0
             };
         }
-        
-        let bestMatch = null;
-        let bestScore = 0;
-        
-        // Search in a grid around the last known position
-        const searchStep = 2; // Check every 2 pixels
-        const searchRange = this.searchRadius;
-        
-        for (let dx = -searchRange; dx <= searchRange; dx += searchStep) {
-            for (let dy = -searchRange; dy <= searchRange; dy += searchStep) {
-                const searchX = lastPosition.x + dx;
-                const searchY = lastPosition.y + dy;
-                
-                // Check bounds
-                if (searchX < this.regionSize/2 || searchY < this.regionSize/2 ||
-                    searchX >= imageData.width - this.regionSize/2 ||
-                    searchY >= imageData.height - this.regionSize/2) {
-                    continue;
-                }
-                
-                try {
-                    const currentRegion = this.extractRegion(imageData, searchX, searchY);
-                    const currentCorners = this.detectCorners(currentRegion);
-                    
-                    const score = this.matchCorners(referenceCorners, currentCorners);
-                    
-                    if (score > bestScore && score > this.matchThreshold) {
-                        bestScore = score;
-                        bestMatch = {
-                            x: searchX,
-                            y: searchY,
-                            quality: score
-                        };
-                    }
-                } catch (error) {
-                    // Skip this search position
-                    continue;
-                }
+
+        // Only process the region at the last known position (no grid search)
+        try {
+            const currentRegion = this.extractRegion(imageData, lastPosition.x, lastPosition.y);
+            const currentCorners = this.detectCorners(currentRegion);
+            const score = this.matchCorners(referenceCorners, currentCorners);
+
+            if (score > this.matchThreshold) {
+                return {
+                    index: markerIndex,
+                    found: true,
+                    x: lastPosition.x,
+                    y: lastPosition.y,
+                    quality: score
+                };
+            } else {
+                return {
+                    index: markerIndex,
+                    found: false,
+                    x: lastPosition.x,
+                    y: lastPosition.y,
+                    quality: score
+                };
             }
-        }
-        
-        if (bestMatch) {
-            return {
-                index: markerIndex,
-                found: true,
-                x: bestMatch.x,
-                y: bestMatch.y,
-                quality: bestMatch.quality
-            };
-        } else {
+        } catch (error) {
             return {
                 index: markerIndex,
                 found: false,
@@ -197,47 +188,52 @@ class CornerTracker {
      */
     extractRegion(imageData, centerX, centerY) {
         const halfSize = Math.floor(this.regionSize / 2);
-        const startX = Math.max(0, centerX - halfSize);
-        const startY = Math.max(0, centerY - halfSize);
-        const endX = Math.min(imageData.width, centerX + halfSize);
-        const endY = Math.min(imageData.height, centerY + halfSize);
-        
+        const startX = Math.max(0, Math.round(centerX - halfSize));
+        const startY = Math.max(0, Math.round(centerY - halfSize));
+        const endX = Math.min(imageData.width, Math.round(centerX + halfSize));
+        const endY = Math.min(imageData.height, Math.round(centerY + halfSize));
+
         const regionWidth = endX - startX;
         const regionHeight = endY - startY;
-        
+
+        // Log extraction coordinates for debugging
+        if (this.debugMode) {
+            console.log(`Extracting region: center=(${centerX.toFixed(1)},${centerY.toFixed(1)}), start=(${startX},${startY}), size=(${regionWidth}x${regionHeight}), imageData=(${imageData.width}x${imageData.height})`);
+        }
+
         // Create new ImageData for the region
         const regionData = new ImageData(regionWidth, regionHeight);
-        
+
         // Copy pixels from source to region
         for (let y = 0; y < regionHeight; y++) {
             for (let x = 0; x < regionWidth; x++) {
                 const srcIndex = ((startY + y) * imageData.width + (startX + x)) * 4;
                 const dstIndex = (y * regionWidth + x) * 4;
-                
+
                 regionData.data[dstIndex] = imageData.data[srcIndex];         // R
                 regionData.data[dstIndex + 1] = imageData.data[srcIndex + 1]; // G
                 regionData.data[dstIndex + 2] = imageData.data[srcIndex + 2]; // B
                 regionData.data[dstIndex + 3] = imageData.data[srcIndex + 3]; // A
             }
         }
-        
+
         return regionData;
     }
     
     /**
-     * Detect corners in a region using simplified Harris corner detection
+     * Detect corners in a region using a simple FAST-like detector
      * @param {ImageData} regionData - Region to analyze
      * @returns {Array} Array of corner points {x, y, strength}
      */
     detectCorners(regionData) {
-        if (!regionData || regionData.width < 3 || regionData.height < 3) {
+        if (!regionData || regionData.width < 7 || regionData.height < 7) {
             return [];
         }
-        
+
         const width = regionData.width;
         const height = regionData.height;
         const corners = [];
-        
+
         // Convert to grayscale
         const gray = new Float32Array(width * height);
         for (let i = 0; i < width * height; i++) {
@@ -246,66 +242,55 @@ class CornerTracker {
             const b = regionData.data[i * 4 + 2];
             gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
         }
-        
-        // Calculate gradients (simplified Sobel)
-        const gradX = new Float32Array(width * height);
-        const gradY = new Float32Array(width * height);
-        
-        for (let y = 1; y < height - 1; y++) {
-            for (let x = 1; x < width - 1; x++) {
-                const idx = y * width + x;
-                
-                // Sobel X gradient
-                gradX[idx] = (
-                    -gray[(y-1) * width + (x-1)] + gray[(y-1) * width + (x+1)] +
-                    -2 * gray[y * width + (x-1)] + 2 * gray[y * width + (x+1)] +
-                    -gray[(y+1) * width + (x-1)] + gray[(y+1) * width + (x+1)]
-                ) / 8.0;
-                
-                // Sobel Y gradient
-                gradY[idx] = (
-                    -gray[(y-1) * width + (x-1)] - 2 * gray[(y-1) * width + x] - gray[(y-1) * width + (x+1)] +
-                    gray[(y+1) * width + (x-1)] + 2 * gray[(y+1) * width + x] + gray[(y+1) * width + (x+1)]
-                ) / 8.0;
-            }
-        }
-        
-        // Calculate corner response (simplified Harris)
-        for (let y = 2; y < height - 2; y++) {
-            for (let x = 2; x < width - 2; x++) {
-                let Ixx = 0, Iyy = 0, Ixy = 0;
-                
-                // Sum over 3x3 window
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        const idx = (y + dy) * width + (x + dx);
-                        const gx = gradX[idx];
-                        const gy = gradY[idx];
-                        
-                        Ixx += gx * gx;
-                        Iyy += gy * gy;
-                        Ixy += gx * gy;
+
+        // FAST circle offsets (16 pixels around a circle of radius 3)
+        const circle = [
+            [0, -3], [1, -3], [2, -2], [3, -1], [3, 0], [3, 1], [2, 2], [1, 3],
+            [0, 3], [-1, 3], [-2, 2], [-3, 1], [-3, 0], [-3, -1], [-2, -2], [-1, -3]
+        ];
+        const N = 16;
+        const threshold = 20; // Intensity difference threshold
+        const contiguous = 9; // Number of contiguous pixels required
+
+        for (let y = 3; y < height - 3; y++) {
+            for (let x = 3; x < width - 3; x++) {
+                const centerIdx = y * width + x;
+                const centerVal = gray[centerIdx];
+                let brighter = 0, darker = 0, maxBright = 0, maxDark = 0;
+
+                // Check circle
+                for (let i = 0; i < N; i++) {
+                    const [dx, dy] = circle[i];
+                    const idx = (y + dy) * width + (x + dx);
+                    const val = gray[idx];
+                    if (val - centerVal > threshold) {
+                        brighter++;
+                        maxBright = Math.max(maxBright, val - centerVal);
+                        darker = 0;
+                    } else if (centerVal - val > threshold) {
+                        darker++;
+                        maxDark = Math.max(maxDark, centerVal - val);
+                        brighter = 0;
+                    } else {
+                        brighter = 0;
+                        darker = 0;
+                    }
+                    if (brighter >= contiguous || darker >= contiguous) {
+                        corners.push({ x, y, strength: Math.max(maxBright, maxDark) });
+                        break;
                     }
                 }
-                
-                // Harris corner response
-                const det = Ixx * Iyy - Ixy * Ixy;
-                const trace = Ixx + Iyy;
-                const response = det - 0.04 * trace * trace;
-                
-                if (response > this.cornerThreshold) {
-                    corners.push({
-                        x: x,
-                        y: y,
-                        strength: response
-                    });
-                }
             }
         }
-        
+
+        // Debug: store corners for visualization
+        if (this.debugMode) {
+            this.lastDebugCorners = corners.slice(0, 100);
+        }
+
         // Sort by strength and keep top corners
         corners.sort((a, b) => b.strength - a.strength);
-        return corners.slice(0, 20); // Keep top 20 corners
+        return corners.slice(0, 20);
     }
     
     /**
@@ -349,7 +334,7 @@ class CornerTracker {
     }
     
     /**
-     * Draw tracking indicators on canvas
+     * Draw tracking indicators on canvas (with debug corners if enabled)
      * @param {CanvasRenderingContext2D} ctx - Canvas context
      */
     drawTrackingIndicators(ctx) {
@@ -358,52 +343,79 @@ class CornerTracker {
         const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
         const labels = ['1', '2', '3', '4'];
         
+        // Debug: draw region boundaries
+        if (this.debugMode && this.lastDebugRegions && this.lastDebugRegions.length > 0) {
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            this.lastDebugRegions.forEach((region, idx) => {
+                ctx.strokeStyle = colors[idx];
+                ctx.lineWidth = 2;
+                ctx.strokeRect(
+                    region.x - region.w / 2,
+                    region.y - region.h / 2,
+                    region.w,
+                    region.h
+                );
+            });
+            ctx.restore();
+        }
+        
+        // Debug: draw color region of first marker in top-left corner
+        if (this.debugMode && this.markerRegions && this.markerRegions[0]) {
+            const region = this.markerRegions[0];
+            ctx.putImageData(region, 10, 10); // Draw color region in top-left
+            ctx.save();
+            ctx.strokeStyle = '#00FFFF';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(10, 10, region.width, region.height);
+            ctx.restore();
+        }
+        
         this.currentPositions.forEach((pos, index) => {
             const quality = this.trackingQuality[index];
             const color = colors[index];
             
-            // Draw circle with quality-based opacity
             ctx.save();
             ctx.globalAlpha = Math.max(0.3, quality);
-            
-            // Outer circle
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 12, 0, 2 * Math.PI);
+            ctx.arc(pos.x, pos.y, 18, 0, 2 * Math.PI);
             ctx.strokeStyle = color;
             ctx.lineWidth = quality > 0.5 ? 3 : 2;
             ctx.stroke();
-            
-            // Inner filled circle
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
+            ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
             ctx.fillStyle = color;
             ctx.fill();
-            
-            // Label
             ctx.fillStyle = 'white';
-            ctx.font = 'bold 10px Arial';
+            ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(labels[index], pos.x, pos.y);
-            
-            // Quality indicator (small bar)
             if (quality < 1.0) {
-                const barWidth = 20;
-                const barHeight = 3;
+                const barWidth = 28;
+                const barHeight = 4;
                 const barX = pos.x - barWidth / 2;
-                const barY = pos.y + 18;
-                
-                // Background
+                const barY = pos.y + 22;
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
                 ctx.fillRect(barX, barY, barWidth, barHeight);
-                
-                // Quality bar
                 ctx.fillStyle = quality > 0.7 ? '#00FF00' : quality > 0.3 ? '#FFFF00' : '#FF0000';
                 ctx.fillRect(barX, barY, barWidth * quality, barHeight);
             }
-            
             ctx.restore();
         });
+        
+        // Debug: draw detected corners
+        if (this.debugMode && this.lastDebugCorners && this.lastDebugCorners.length > 0) {
+            ctx.save();
+            ctx.globalAlpha = 0.7;
+            ctx.fillStyle = '#00FFFF';
+            this.lastDebugCorners.forEach(corner => {
+                ctx.beginPath();
+                ctx.arc(corner.x, corner.y, 3, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+            ctx.restore();
+        }
     }
     
     /**
