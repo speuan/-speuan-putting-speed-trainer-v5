@@ -15,12 +15,26 @@ class UIController {
         this.newCaptureButton = document.getElementById('new-capture-button');
         this.analyzeButton = document.getElementById('analyze-button');
         this.loadSampleButton = document.getElementById('load-sample-button');
+        this.setupMarkersButton = document.getElementById('setup-markers-button');
+        this.recalibrateButton = document.getElementById('recalibrate-button');
         
         this.displayContext = this.displayCanvas.getContext('2d');
+        
+        // Setup mode state
+        this.isInSetupMode = false;
+        this.selectedPoints = [];
+        this.setupOverlay = null;
+        this.setupOverlayContext = null;
         
         // Flag to track if we're showing a captured image
         this.isShowingCapturedImage = false;
         this.isShowingAnalyzedImage = false;
+        
+        // Initialize setup overlay
+        this.createSetupOverlay();
+        
+        // Add click handler for point selection
+        this.setupClickHandler();
         
         // Log elements to verify they're found
         console.log('Display canvas:', this.displayCanvas);
@@ -30,8 +44,281 @@ class UIController {
         console.log('New capture button:', this.newCaptureButton);
         console.log('Analyze button:', this.analyzeButton);
         console.log('Load sample button:', this.loadSampleButton);
+        console.log('Setup markers button:', this.setupMarkersButton);
+        console.log('Recalibrate button:', this.recalibrateButton);
     }
     
+    /**
+     * Create the setup overlay canvas
+     */
+    createSetupOverlay() {
+        this.setupOverlay = document.createElement('canvas');
+        this.setupOverlay.id = 'setup-overlay';
+        this.setupOverlay.style.position = 'absolute';
+        this.setupOverlay.style.top = '0';
+        this.setupOverlay.style.left = '0';
+        this.setupOverlay.style.width = '100%';
+        this.setupOverlay.style.height = '100%';
+        this.setupOverlay.style.zIndex = '10';
+        this.setupOverlay.style.display = 'none';
+        this.setupOverlay.style.cursor = 'crosshair';
+        
+        this.setupOverlayContext = this.setupOverlay.getContext('2d');
+        
+        // Add overlay to camera container
+        this.cameraContainer.appendChild(this.setupOverlay);
+        
+        console.log('Setup overlay created');
+    }
+    
+    /**
+     * Setup click handler for point selection
+     */
+    setupClickHandler() {
+        this.setupOverlay.addEventListener('click', (event) => {
+            if (!this.isInSetupMode) return;
+            
+            const rect = this.setupOverlay.getBoundingClientRect();
+            const scaleX = this.setupOverlay.width / rect.width;
+            const scaleY = this.setupOverlay.height / rect.height;
+            
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            this.addSelectedPoint(x, y);
+        });
+    }
+    
+    /**
+     * Add a selected point during setup
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     */
+    addSelectedPoint(x, y) {
+        if (this.selectedPoints.length >= 4) return;
+        
+        this.selectedPoints.push({ x, y });
+        console.log(`Point ${this.selectedPoints.length} selected at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+        
+        this.drawSetupOverlay();
+        this.updateSetupInstructions();
+        
+        // If we have 4 points, show confirm button
+        if (this.selectedPoints.length === 4) {
+            this.showConfirmSetupButton();
+        }
+    }
+    
+    /**
+     * Start setup mode
+     */
+    startSetupMode() {
+        console.log('Starting setup mode');
+        this.isInSetupMode = true;
+        this.selectedPoints = [];
+        
+        // Match overlay dimensions to display canvas
+        this.setupOverlay.width = this.displayCanvas.width;
+        this.setupOverlay.height = this.displayCanvas.height;
+        
+        // Show overlay and hide other buttons
+        this.setupOverlay.style.display = 'block';
+        this.hideMainButtons();
+        this.showSetupButtons();
+        this.updateSetupInstructions();
+        this.drawSetupOverlay();
+        
+        // Show instructions container
+        const instructionsContainer = document.getElementById('setup-instructions-container');
+        if (instructionsContainer) {
+            instructionsContainer.style.display = 'block';
+        }
+    }
+    
+    /**
+     * End setup mode
+     */
+    endSetupMode() {
+        console.log('Ending setup mode');
+        this.isInSetupMode = false;
+        this.setupOverlay.style.display = 'none';
+        this.showMainButtons();
+        this.hideSetupButtons();
+        this.clearSetupInstructions();
+        
+        // Hide instructions container
+        const instructionsContainer = document.getElementById('setup-instructions-container');
+        if (instructionsContainer) {
+            instructionsContainer.style.display = 'none';
+        }
+    }
+    
+    /**
+     * Draw the setup overlay with selected points
+     */
+    drawSetupOverlay() {
+        // Clear overlay
+        this.setupOverlayContext.clearRect(0, 0, this.setupOverlay.width, this.setupOverlay.height);
+        
+        // Draw semi-transparent background
+        this.setupOverlayContext.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        this.setupOverlayContext.fillRect(0, 0, this.setupOverlay.width, this.setupOverlay.height);
+        
+        // Draw selected points
+        this.selectedPoints.forEach((point, index) => {
+            this.drawMarkerPoint(point.x, point.y, index + 1);
+        });
+    }
+    
+    /**
+     * Draw a marker point with number
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} number - Point number (1-4)
+     */
+    drawMarkerPoint(x, y, number) {
+        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
+        const color = colors[number - 1];
+        
+        // Draw outer circle
+        this.setupOverlayContext.beginPath();
+        this.setupOverlayContext.arc(x, y, 20, 0, 2 * Math.PI);
+        this.setupOverlayContext.strokeStyle = color;
+        this.setupOverlayContext.lineWidth = 3;
+        this.setupOverlayContext.stroke();
+        
+        // Draw inner filled circle
+        this.setupOverlayContext.beginPath();
+        this.setupOverlayContext.arc(x, y, 8, 0, 2 * Math.PI);
+        this.setupOverlayContext.fillStyle = color;
+        this.setupOverlayContext.fill();
+        
+        // Draw number
+        this.setupOverlayContext.fillStyle = 'white';
+        this.setupOverlayContext.font = 'bold 12px Arial';
+        this.setupOverlayContext.textAlign = 'center';
+        this.setupOverlayContext.textBaseline = 'middle';
+        this.setupOverlayContext.fillText(number.toString(), x, y);
+    }
+    
+    /**
+     * Update setup instructions
+     */
+    updateSetupInstructions() {
+        const instructionsElement = document.getElementById('setup-instructions');
+        if (!instructionsElement) return;
+        
+        const pointNumber = this.selectedPoints.length + 1;
+        if (pointNumber <= 4) {
+            instructionsElement.textContent = `Tap center of marker ${pointNumber}/4`;
+        } else {
+            instructionsElement.textContent = 'All markers selected. Confirm setup to continue.';
+        }
+    }
+    
+    /**
+     * Clear setup instructions
+     */
+    clearSetupInstructions() {
+        const instructionsElement = document.getElementById('setup-instructions');
+        if (instructionsElement) {
+            instructionsElement.textContent = '';
+        }
+    }
+    
+    /**
+     * Hide main camera buttons during setup
+     */
+    hideMainButtons() {
+        this.captureButton.style.display = 'none';
+        this.loadSampleButton.style.display = 'none';
+        this.setupMarkersButton.style.display = 'none';
+        this.analyzeButton.style.display = 'none';
+        this.backToLiveButton.style.display = 'none';
+        this.newCaptureButton.style.display = 'none';
+    }
+    
+    /**
+     * Show main camera buttons
+     */
+    showMainButtons() {
+        if (!this.isShowingCapturedImage) {
+            this.captureButton.style.display = 'inline-block';
+            this.loadSampleButton.style.display = 'inline-block';
+            this.setupMarkersButton.style.display = 'inline-block';
+        } else {
+            this.backToLiveButton.style.display = 'inline-block';
+            this.newCaptureButton.style.display = 'inline-block';
+            if (!this.isShowingAnalyzedImage) {
+                this.analyzeButton.style.display = 'inline-block';
+            }
+        }
+        
+        // Show recalibrate button if markers have been set up
+        if (this.hasMarkersSetup()) {
+            this.recalibrateButton.style.display = 'inline-block';
+        }
+    }
+    
+    /**
+     * Show setup-specific buttons
+     */
+    showSetupButtons() {
+        const cancelButton = document.getElementById('cancel-setup-button');
+        if (cancelButton) {
+            cancelButton.style.display = 'inline-block';
+        }
+    }
+    
+    /**
+     * Hide setup-specific buttons
+     */
+    hideSetupButtons() {
+        const cancelButton = document.getElementById('cancel-setup-button');
+        const confirmButton = document.getElementById('confirm-setup-button');
+        
+        if (cancelButton) {
+            cancelButton.style.display = 'none';
+        }
+        if (confirmButton) {
+            confirmButton.style.display = 'none';
+        }
+    }
+    
+    /**
+     * Show confirm setup button
+     */
+    showConfirmSetupButton() {
+        const confirmButton = document.getElementById('confirm-setup-button');
+        if (confirmButton) {
+            confirmButton.style.display = 'inline-block';
+        }
+    }
+    
+    /**
+     * Check if markers have been set up
+     * @returns {boolean}
+     */
+    hasMarkersSetup() {
+        return this.selectedPoints.length === 4;
+    }
+    
+    /**
+     * Get selected marker points
+     * @returns {Array} Array of {x, y} points
+     */
+    getSelectedPoints() {
+        return [...this.selectedPoints];
+    }
+    
+    /**
+     * Reset selected points (for recalibration)
+     */
+    resetSelectedPoints() {
+        this.selectedPoints = [];
+        console.log('Selected points reset');
+    }
+
     /**
      * Show the captured image on the display canvas
      * @param {Object} frame - The captured frame data
@@ -45,9 +332,15 @@ class UIController {
         // Show the capture-related buttons, hide the others
         this.captureButton.style.display = 'none';
         this.loadSampleButton.style.display = 'none';
+        this.setupMarkersButton.style.display = 'none';
         this.backToLiveButton.style.display = 'inline-block';
         this.newCaptureButton.style.display = 'inline-block';
         this.analyzeButton.style.display = 'inline-block';
+        
+        // Show recalibrate if markers are set up
+        if (this.hasMarkersSetup()) {
+            this.recalibrateButton.style.display = 'inline-block';
+        }
         
         this.isShowingCapturedImage = true;
         this.isShowingAnalyzedImage = false;
@@ -77,9 +370,15 @@ class UIController {
         // Show the camera buttons, hide the capture-related buttons
         this.captureButton.style.display = 'inline-block';
         this.loadSampleButton.style.display = 'inline-block';
+        this.setupMarkersButton.style.display = 'inline-block';
         this.backToLiveButton.style.display = 'none';
         this.newCaptureButton.style.display = 'none';
         this.analyzeButton.style.display = 'none';
+        
+        // Show recalibrate if markers are set up
+        if (this.hasMarkersSetup()) {
+            this.recalibrateButton.style.display = 'inline-block';
+        }
         
         this.isShowingCapturedImage = false;
         this.isShowingAnalyzedImage = false;

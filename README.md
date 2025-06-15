@@ -1,11 +1,10 @@
 # Golf Putting Speed Trainer (PWA)
 
-A browser-based Progressive Web App that allows users to analyze the speed and trajectory of golf putts using their mobile camera.
+A browser-based Progressive Web App that allows users to analyze the speed of golf putts using their mobile camera.
 
 ## Features
 
 - Golf ball detection using camera
-- Real-time ball tracking and motion analysis
 - Speed calculation
 - PWA capabilities for offline use
 

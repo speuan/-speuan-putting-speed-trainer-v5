@@ -49,6 +49,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadSampleBtn = document.getElementById('load-sample-button');
     const clearDebugLogBtn = document.getElementById('clear-debug-log');
     
+    // Setup mode elements
+    const setupMarkersBtn = document.getElementById('setup-markers-button');
+    const recalibrateBtn = document.getElementById('recalibrate-button');
+    const confirmSetupBtn = document.getElementById('confirm-setup-button');
+    const cancelSetupBtn = document.getElementById('cancel-setup-button');
+    const setupInstructionsContainer = document.getElementById('setup-instructions-container');
+    
     console.log('Elements found:', {
         startCameraBtn,
         captureBtn,
@@ -56,7 +63,12 @@ document.addEventListener('DOMContentLoaded', () => {
         backToLiveBtn,
         analyzeBtn,
         loadSampleBtn,
-        clearDebugLogBtn
+        clearDebugLogBtn,
+        setupMarkersBtn,
+        recalibrateBtn,
+        confirmSetupBtn,
+        cancelSetupBtn,
+        setupInstructionsContainer
     });
     
     // Initialize event listeners
@@ -89,144 +101,43 @@ document.addEventListener('DOMContentLoaded', () => {
         uiController.showCapturedImage(frame);
     });
     
-    // Load sample image button event listener
-    loadSampleBtn.addEventListener('click', async () => {
-        console.log('Load sample image button clicked');
-        try {
-            // Load the sample image
-            const frame = await cameraController.loadSampleImage();
-            
-            // Show the sample image in the display canvas
-            uiController.showCapturedImage(frame);
-            
-            // Start loading the detection model in the background if not already loaded
-            if (!ballDetector.isModelLoaded && !ballDetector.modelLoading) {
-                ballDetector.initialize().then(() => {
-                    console.log('Model preloaded and ready for use');
-                }).catch(err => {
-                    console.error('Error preloading model:', err);
-                });
-            }
-        } catch (error) {
-            console.error('Failed to load sample image:', error);
-            alert('Could not load sample image. Please try again.');
-        }
+    newCaptureBtn.addEventListener('click', () => {
+        console.log('New capture button clicked');
+        // Capture a new frame
+        const frame = cameraController.captureFrame();
+        
+        // Show the new captured image
+        uiController.showCapturedImage(frame);
+    });
+    
+    backToLiveBtn.addEventListener('click', () => {
+        console.log('Back to live button clicked');
+        // Reset UI to show live feed
+        uiController.resetUI();
     });
     
     analyzeBtn.addEventListener('click', async () => {
         console.log('Analyze button clicked');
         
-        // Disable the button while processing
+        // Disable the button during analysis
         analyzeBtn.disabled = true;
         analyzeBtn.textContent = 'Analyzing...';
         
         try {
-            // Get the display canvas for analysis
-            const displayCanvas = document.getElementById('display-canvas');
+            // Get the current frame from the display canvas
+            const canvas = document.getElementById('display-canvas');
             
-            console.log('Starting analysis of captured image...');
-            console.log('Canvas dimensions:', {
-                width: displayCanvas.width,
-                height: displayCanvas.height
-            });
+            // Run detection on the captured frame
+            const detections = await ballDetector.detectObjects(canvas);
             
-            // Ensure model is loaded
-            if (!ballDetector.isModelLoaded) {
-                console.log('Model not loaded yet, initializing...');
-                await ballDetector.initialize();
-            }
+            console.log('Analysis complete:', detections);
             
-            // Verify the canvas has content
-            const emptyCheck = displayCanvas.getContext('2d').getImageData(0, 0, 10, 10);
-            const hasContent = emptyCheck.data.some(channel => channel !== 0);
+            // Show analyzed image state
+            uiController.showAnalyzedImage();
             
-            if (!hasContent) {
-                console.warn('Canvas appears to be empty');
-                alert('The image appears to be empty. Please capture an image first.');
-                return;
-            }
-            
-            // Create a preprocessed version of the image for debugging
-            if (debugMode) {
-                // Create a temporary canvas to visualize preprocessing
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = 640;
-                tempCanvas.height = 640;
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                // Fill with background color to visualize padding
-                tempCtx.fillStyle = 'rgba(0, 0, 255, 0.3)';  // Semi-transparent blue background
-                tempCtx.fillRect(0, 0, 640, 640);
-                
-                // Draw with aspect ratio preservation
-                const imgAspectRatio = displayCanvas.width / displayCanvas.height;
-                let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
-                
-                if (imgAspectRatio > 1) {
-                    // Image is wider than tall
-                    renderWidth = 640;
-                    renderHeight = 640 / imgAspectRatio;
-                    offsetY = (640 - renderHeight) / 2;
-                } else {
-                    // Image is taller than wide or square
-                    renderHeight = 640;
-                    renderWidth = 640 * imgAspectRatio;
-                    offsetX = (640 - renderWidth) / 2;
-                }
-                
-                // Draw image
-                tempCtx.drawImage(
-                    displayCanvas,
-                    offsetX,
-                    offsetY,
-                    renderWidth,
-                    renderHeight
-                );
-                
-                // Draw bounding box showing the actual image area
-                tempCtx.strokeStyle = 'red';
-                tempCtx.lineWidth = 2;
-                tempCtx.strokeRect(offsetX, offsetY, renderWidth, renderHeight);
-                
-                // Add some text information
-                tempCtx.fillStyle = 'white';
-                tempCtx.font = '14px Arial';
-                tempCtx.fillText(`Original: ${displayCanvas.width}x${displayCanvas.height}`, 10, 20);
-                tempCtx.fillText(`Rendered: ${Math.round(renderWidth)}x${Math.round(renderHeight)}`, 10, 40);
-                tempCtx.fillText(`Offset: (${Math.round(offsetX)},${Math.round(offsetY)})`, 10, 60);
-                
-                // Show in debug canvas
-                const debugCanvas = document.getElementById('debug-canvas');
-                if (debugCanvas) {
-                    const debugCtx = debugCanvas.getContext('2d');
-                    debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-                    debugCtx.drawImage(tempCanvas, 0, 0);
-                }
-            }
-            
-            // Perform object detection
-            console.log('Running detection...');
-            const detections = await ballDetector.detectObjects(displayCanvas);
-            
-            console.log('Detection results:', detections);
-            
-            if (detections.length === 0) {
-                console.log('No objects detected in the image');
-                // Removed alert for no detections
-            } else {
-                // Draw bounding boxes on the detected objects
-                ballDetector.drawDetections(
-                    displayCanvas.getContext('2d'),
-                    detections
-                );
-                
-                // Update UI to show we're now displaying analyzed image
-                uiController.showAnalyzedImage();
-                // Removed detection summary alert
-            }
         } catch (error) {
             console.error('Error during analysis:', error);
-            alert(`An error occurred during analysis: ${error.message}. Please try again.`);
+            alert('Error during analysis. Please try again.');
         } finally {
             // Re-enable the button
             analyzeBtn.disabled = false;
@@ -234,43 +145,104 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    newCaptureBtn.addEventListener('click', () => {
-        console.log('New capture button clicked');
-        // Reset the UI and camera controller to take a new capture
-        uiController.resetUI();
-        cameraController.reset();
-    });
-    
-    backToLiveBtn.addEventListener('click', () => {
-        console.log('Back to live button clicked');
-        // Just go back to live view without resetting the captured frame
-        uiController.resetUI();
-        cameraController.startVideoDisplay(); // Resume video display
-    });
-    
-    // Clear debug log button event listener
-    if (clearDebugLogBtn) {
-        clearDebugLogBtn.addEventListener('click', () => {
-            console.log('Clear debug log button clicked');
-            
-            // Clear the debug log element
-            const debugLogElement = document.getElementById('debug-log');
-            if (debugLogElement) {
-                debugLogElement.innerHTML = '';
-            }
-            
-            // Also try to use the ballDetector's logger if available
-            if (ballDetector && ballDetector.debugLogger && typeof ballDetector.debugLogger.clear === 'function') {
-                ballDetector.debugLogger.clear();
-            }
-            
-            // Remove any model input preview
-            const modelPreview = document.getElementById('model-input-preview');
-            if (modelPreview) {
-                modelPreview.remove();
-            }
+    loadSampleBtn.addEventListener('click', () => {
+        console.log('Load sample button clicked');
+        
+        // Create a sample image for testing
+        const canvas = document.getElementById('display-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Clear canvas and draw a simple test pattern
+        ctx.fillStyle = '#87CEEB'; // Sky blue background
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw a sample golf ball
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw sample markers in corners
+        const markerPositions = [
+            { x: 50, y: 50 },
+            { x: canvas.width - 50, y: 50 },
+            { x: canvas.width - 50, y: canvas.height - 50 },
+            { x: 50, y: canvas.height - 50 }
+        ];
+        
+        markerPositions.forEach((pos, index) => {
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 15, 0, 2 * Math.PI);
+            ctx.fillStyle = ['red', 'green', 'blue', 'yellow'][index];
+            ctx.fill();
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 1;
+            ctx.stroke();
         });
-    }
+        
+        // Create frame data
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const frame = {
+            timestamp: Date.now(),
+            imageData: imageData
+        };
+        
+        // Show as captured image
+        uiController.showCapturedImage(frame);
+        
+        console.log('Sample image loaded');
+    });
     
-    console.log('Event listeners attached');
+    // Setup mode event listeners
+    setupMarkersBtn.addEventListener('click', () => {
+        console.log('Setup markers button clicked');
+        uiController.startSetupMode();
+        setupInstructionsContainer.style.display = 'block';
+    });
+    
+    recalibrateBtn.addEventListener('click', () => {
+        console.log('Recalibrate button clicked');
+        uiController.resetSelectedPoints();
+        uiController.startSetupMode();
+        setupInstructionsContainer.style.display = 'block';
+    });
+    
+    confirmSetupBtn.addEventListener('click', () => {
+        console.log('Confirm setup button clicked');
+        const selectedPoints = uiController.getSelectedPoints();
+        
+        if (selectedPoints.length === 4) {
+            console.log('Setup confirmed with points:', selectedPoints);
+            
+            // TODO: Initialize corner tracking with selected points
+            // This will be implemented in Step 2
+            
+            uiController.endSetupMode();
+            setupInstructionsContainer.style.display = 'none';
+            
+            // Show success message
+            alert('Marker setup complete! Tracking will begin.');
+        } else {
+            alert('Please select all 4 marker points before confirming.');
+        }
+    });
+    
+    cancelSetupBtn.addEventListener('click', () => {
+        console.log('Cancel setup button clicked');
+        uiController.endSetupMode();
+        setupInstructionsContainer.style.display = 'none';
+    });
+    
+    clearDebugLogBtn.addEventListener('click', () => {
+        console.log('Clear debug log button clicked');
+        const debugLog = document.getElementById('debug-log');
+        if (debugLog) {
+            debugLog.innerHTML = '';
+        }
+    });
+    
+    console.log('All event listeners initialized');
 }); 

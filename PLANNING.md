@@ -4,7 +4,7 @@
 Golf Putting Speed Trainer (PWA)
 
 ## Goal
-Create a browser-based (PWA) tool that allows users to analyze the speed and trajectory of golf putts using their mobile camera. The app will record, process, and track a golf ball to compute speed and motion metrics.
+Create a browser-based (PWA) tool that allows users to analyze the speed of golf putts using their mobile camera. The app will record, process, and track a golf ball to compute speed and motion metrics.
 
 ---
 
@@ -14,12 +14,11 @@ Create a browser-based (PWA) tool that allows users to analyze the speed and tra
 - Static camera setup assumed (no camera motion).
 - Golf ball and coin detection via custom trained lightweight model.
 - Use HTML5 video and canvas for frame capture.
-- Real-time ball tracking and motion analysis.
+- Record putt then calculate speed after.
 - Calibrate pixel-to-real-world distance ratio using coins laid out in known geometry.
 - PWA capabilities: offline support, mobile-friendly.
 
 ### Future Extensions
-- Stroke path visualization.
 - Putt consistency scoring.
 - AI coaching feedback.
 - Upload/share results.
@@ -37,7 +36,6 @@ Create a browser-based (PWA) tool that allows users to analyze the speed and tra
 - **Custom TensorFlow.js object detection model**
   - Trained to recognize a golf ball.
   - Small custom MobileNet/SSD/YOLO model, trained externally (e.g., Roboflow or TensorFlow Model Maker)
-  - Converts frame-by-frame detections to movement paths.
 - Speed estimation using frame displacement and known dimensions (calibration)
 
 
