@@ -126,13 +126,14 @@ class CornerTracker {
                 quality: 0
             };
         }
-        // Local search window size (pixels)
-        const searchRadius = 60;
+        // Optimized local search window size and step
+        const searchRadius = 40;
+        const searchStep = 8;
         let bestScore = -Infinity;
         let bestPos = { x: lastPosition.x, y: lastPosition.y };
         let found = false;
-        for (let dy = -searchRadius; dy <= searchRadius; dy += 4) {
-            for (let dx = -searchRadius; dx <= searchRadius; dx += 4) {
+        for (let dy = -searchRadius; dy <= searchRadius; dy += searchStep) {
+            for (let dx = -searchRadius; dx <= searchRadius; dx += searchStep) {
                 const cx = lastPosition.x + dx;
                 const cy = lastPosition.y + dy;
                 if (cx < 0 || cy < 0 || cx >= imageData.width || cy >= imageData.height) continue;
@@ -346,7 +347,7 @@ class CornerTracker {
             });
             ctx.restore();
         }
-        // Remove auxiliary view (no region in top-left)
+        // Draw marker indicators only (no auxiliary or cyan debug points)
         this.currentPositions.forEach((pos, index) => {
             const quality = this.trackingQuality[index];
             const color = colors[index];
@@ -378,18 +379,7 @@ class CornerTracker {
             }
             ctx.restore();
         });
-        // Debug: draw detected corners
-        if (this.debugMode && this.lastDebugCorners && this.lastDebugCorners.length > 0) {
-            ctx.save();
-            ctx.globalAlpha = 0.7;
-            ctx.fillStyle = '#00FFFF';
-            this.lastDebugCorners.forEach(corner => {
-                ctx.beginPath();
-                ctx.arc(corner.x, corner.y, 3, 0, 2 * Math.PI);
-                ctx.fill();
-            });
-            ctx.restore();
-        }
+        // No cyan debug points
     }
     
     /**
