@@ -99,12 +99,12 @@ class UIController {
      * @param {number} y - Y coordinate
      */
     addSelectedPoint(x, y) {
-        if (this.selectedPoints.length >= 1) return;
+        if (this.selectedPoints.length >= 4) return;
         this.selectedPoints.push({ x, y });
-        console.log(`Marker selected at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+        console.log(`Point ${this.selectedPoints.length} selected at (${x.toFixed(1)}, ${y.toFixed(1)})`);
         this.drawSetupOverlay();
         this.updateSetupInstructions();
-        if (this.selectedPoints.length === 1) {
+        if (this.selectedPoints.length === 4) {
             this.showConfirmSetupButton();
         }
     }
@@ -177,7 +177,8 @@ class UIController {
      * @param {number} number - Point number (1-4)
      */
     drawMarkerPoint(x, y, number) {
-        const color = '#FF0000';
+        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
+        const color = colors[number - 1];
         this.setupOverlayContext.beginPath();
         this.setupOverlayContext.arc(x, y, 20, 0, 2 * Math.PI);
         this.setupOverlayContext.strokeStyle = color;
@@ -191,7 +192,7 @@ class UIController {
         this.setupOverlayContext.font = 'bold 12px Arial';
         this.setupOverlayContext.textAlign = 'center';
         this.setupOverlayContext.textBaseline = 'middle';
-        this.setupOverlayContext.fillText('1', x, y);
+        this.setupOverlayContext.fillText(number.toString(), x, y);
     }
     
     /**
@@ -200,10 +201,11 @@ class UIController {
     updateSetupInstructions() {
         const instructionsElement = document.getElementById('setup-instructions');
         if (!instructionsElement) return;
-        if (this.selectedPoints.length === 0) {
-            instructionsElement.textContent = 'Tap the point you want to track.';
+        const pointNumber = this.selectedPoints.length + 1;
+        if (pointNumber <= 4) {
+            instructionsElement.textContent = `Tap center of marker ${pointNumber}/4`;
         } else {
-            instructionsElement.textContent = 'Marker selected. Confirm setup to continue.';
+            instructionsElement.textContent = 'All markers selected. Confirm setup to continue.';
         }
     }
     
@@ -291,7 +293,7 @@ class UIController {
      * @returns {boolean}
      */
     hasMarkersSetup() {
-        return this.selectedPoints.length === 1;
+        return this.selectedPoints.length === 4;
     }
     
     /**
@@ -379,11 +381,11 @@ class UIController {
      * Confirm setup and start tracking
      */
     confirmSetup() {
-        if (this.selectedPoints.length !== 1) {
-            alert('Please select a marker point before confirming.');
+        if (this.selectedPoints.length !== 4) {
+            alert('Please select all 4 marker points before confirming.');
             return;
         }
-        console.log('Confirming setup with point:', this.selectedPoints[0]);
+        console.log('Confirming setup with points:', this.selectedPoints);
         try {
             const imageData = this.ctx.getImageData(0, 0, this.displayCanvas.width, this.displayCanvas.height);
             this.cornerTracker.setupMarkers(this.selectedPoints, imageData);
