@@ -35,48 +35,38 @@ class CornerTracker {
      * @param {ImageData} imageData - Current frame image data
      */
     setupMarkers(points, imageData) {
-        console.log('Setting up markers with points:', points);
-        
-        if (points.length !== 4) {
-            throw new Error('Exactly 4 marker points required');
+        console.log('Setting up marker with point:', points);
+        if (points.length !== 1) {
+            throw new Error('Exactly 1 marker point required');
         }
-        
         this.setupImageData = imageData;
         this.markerRegions = [];
         this.referenceCorners = [];
         this.currentPositions = [...points];
         this.lastKnownPositions = [...points];
-        this.trackingQuality = [1.0, 1.0, 1.0, 1.0];
+        this.trackingQuality = [1.0];
         this.lastDebugRegions = [];
-        
-        // Extract reference regions and detect corners for each marker
-        points.forEach((point, index) => {
-            try {
-                const region = this.extractRegion(imageData, point.x, point.y);
-                const corners = this.detectCorners(region);
-                
-                this.markerRegions.push(region);
-                this.referenceCorners.push(corners);
-                
-                // Debug: store region boundary for visualization
-                if (this.debugMode) {
-                    this.lastDebugRegions.push({
-                        x: point.x,
-                        y: point.y,
-                        w: region.width,
-                        h: region.height
-                    });
-                }
-                
-                console.log(`Marker ${index + 1}: Found ${corners.length} corners at (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`);
-            } catch (error) {
-                console.error(`Error setting up marker ${index + 1}:`, error);
-                // Use empty corners as fallback
-                this.markerRegions.push(null);
-                this.referenceCorners.push([]);
+        // Extract reference region and detect corners for the marker
+        const point = points[0];
+        try {
+            const region = this.extractRegion(imageData, point.x, point.y);
+            const corners = this.detectCorners(region);
+            this.markerRegions.push(region);
+            this.referenceCorners.push(corners);
+            if (this.debugMode) {
+                this.lastDebugRegions.push({
+                    x: point.x,
+                    y: point.y,
+                    w: region.width,
+                    h: region.height
+                });
             }
-        });
-        
+            console.log(`Marker: Found ${corners.length} corners at (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`);
+        } catch (error) {
+            console.error('Error setting up marker:', error);
+            this.markerRegions.push(null);
+            this.referenceCorners.push([]);
+        }
         this.isSetup = true;
         console.log('Marker setup complete');
     }
@@ -88,40 +78,32 @@ class CornerTracker {
      */
     trackMarkers(imageData) {
         if (!this.isSetup) {
-            console.warn('Markers not set up yet');
+            console.warn('Marker not set up yet');
             return [];
         }
-        
         const results = [];
-        
-        this.currentPositions.forEach((lastPos, index) => {
-            try {
-                const result = this.trackSingleMarker(imageData, index, lastPos);
-                results.push(result);
-                
-                // Update positions and quality
-                if (result.found) {
-                    this.currentPositions[index] = { x: result.x, y: result.y };
-                    this.lastKnownPositions[index] = { x: result.x, y: result.y };
-                    this.trackingQuality[index] = result.quality;
-                } else {
-                    // Keep last known position but reduce quality
-                    this.trackingQuality[index] *= 0.8;
-                }
-                
-            } catch (error) {
-                console.error(`Error tracking marker ${index + 1}:`, error);
-                results.push({
-                    index: index,
-                    found: false,
-                    x: lastPos.x,
-                    y: lastPos.y,
-                    quality: 0
-                });
-                this.trackingQuality[index] = 0;
+        const lastPos = this.currentPositions[0];
+        try {
+            const result = this.trackSingleMarker(imageData, 0, lastPos);
+            results.push(result);
+            if (result.found) {
+                this.currentPositions[0] = { x: result.x, y: result.y };
+                this.lastKnownPositions[0] = { x: result.x, y: result.y };
+                this.trackingQuality[0] = result.quality;
+            } else {
+                this.trackingQuality[0] *= 0.8;
             }
-        });
-        
+        } catch (error) {
+            console.error('Error tracking marker:', error);
+            results.push({
+                index: 0,
+                found: false,
+                x: lastPos.x,
+                y: lastPos.y,
+                quality: 0
+            });
+            this.trackingQuality[0] = 0;
+        }
         return results;
     }
     
@@ -339,71 +321,62 @@ class CornerTracker {
      */
     drawTrackingIndicators(ctx) {
         if (!this.isSetup) return;
-        
-        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
-        const labels = ['1', '2', '3', '4'];
-        
-        // Debug: draw region boundaries
+        const color = '#FF0000';
+        // Debug: draw region boundary
         if (this.debugMode && this.lastDebugRegions && this.lastDebugRegions.length > 0) {
             ctx.save();
             ctx.globalAlpha = 0.5;
-            this.lastDebugRegions.forEach((region, idx) => {
-                ctx.strokeStyle = colors[idx];
-                ctx.lineWidth = 2;
-                ctx.strokeRect(
-                    region.x - region.w / 2,
-                    region.y - region.h / 2,
-                    region.w,
-                    region.h
-                );
-            });
+            const region = this.lastDebugRegions[0];
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+                region.x - region.w / 2,
+                region.y - region.h / 2,
+                region.w,
+                region.h
+            );
             ctx.restore();
         }
-        
-        // Debug: draw color region of first marker in top-left corner
+        // Debug: draw color region of marker in top-left corner
         if (this.debugMode && this.markerRegions && this.markerRegions[0]) {
             const region = this.markerRegions[0];
-            ctx.putImageData(region, 10, 10); // Draw color region in top-left
+            ctx.putImageData(region, 10, 10);
             ctx.save();
             ctx.strokeStyle = '#00FFFF';
             ctx.lineWidth = 2;
             ctx.strokeRect(10, 10, region.width, region.height);
             ctx.restore();
         }
-        
-        this.currentPositions.forEach((pos, index) => {
-            const quality = this.trackingQuality[index];
-            const color = colors[index];
-            
-            ctx.save();
-            ctx.globalAlpha = Math.max(0.3, quality);
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 18, 0, 2 * Math.PI);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = quality > 0.5 ? 3 : 2;
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
-            ctx.fillStyle = color;
-            ctx.fill();
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(labels[index], pos.x, pos.y);
-            if (quality < 1.0) {
-                const barWidth = 28;
-                const barHeight = 4;
-                const barX = pos.x - barWidth / 2;
-                const barY = pos.y + 22;
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                ctx.fillRect(barX, barY, barWidth, barHeight);
-                ctx.fillStyle = quality > 0.7 ? '#00FF00' : quality > 0.3 ? '#FFFF00' : '#FF0000';
-                ctx.fillRect(barX, barY, barWidth * quality, barHeight);
-            }
-            ctx.restore();
-        });
-        
+        const pos = this.currentPositions[0];
+        const quality = this.trackingQuality[0];
+        ctx.save();
+        ctx.globalAlpha = Math.max(0.3, quality);
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 18, 0, 2 * Math.PI);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = quality > 0.5 ? 3 : 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('1', pos.x, pos.y);
+        // Draw quality bar
+        if (quality < 1.0) {
+            const barWidth = 28;
+            const barHeight = 4;
+            const barX = pos.x - barWidth / 2;
+            const barY = pos.y + 22;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+            ctx.fillStyle = quality > 0.7 ? '#00FF00' : quality > 0.3 ? '#FFFF00' : '#FF0000';
+            ctx.fillRect(barX, barY, barWidth * quality, barHeight);
+        }
+        ctx.restore();
         // Debug: draw detected corners
         if (this.debugMode && this.lastDebugCorners && this.lastDebugCorners.length > 0) {
             ctx.save();

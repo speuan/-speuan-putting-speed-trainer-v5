@@ -99,16 +99,12 @@ class UIController {
      * @param {number} y - Y coordinate
      */
     addSelectedPoint(x, y) {
-        if (this.selectedPoints.length >= 4) return;
-        
+        if (this.selectedPoints.length >= 1) return;
         this.selectedPoints.push({ x, y });
-        console.log(`Point ${this.selectedPoints.length} selected at (${x.toFixed(1)}, ${y.toFixed(1)})`);
-        
+        console.log(`Marker selected at (${x.toFixed(1)}, ${y.toFixed(1)})`);
         this.drawSetupOverlay();
         this.updateSetupInstructions();
-        
-        // If we have 4 points, show confirm button
-        if (this.selectedPoints.length === 4) {
+        if (this.selectedPoints.length === 1) {
             this.showConfirmSetupButton();
         }
     }
@@ -181,28 +177,21 @@ class UIController {
      * @param {number} number - Point number (1-4)
      */
     drawMarkerPoint(x, y, number) {
-        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
-        const color = colors[number - 1];
-        
-        // Draw outer circle
+        const color = '#FF0000';
         this.setupOverlayContext.beginPath();
         this.setupOverlayContext.arc(x, y, 20, 0, 2 * Math.PI);
         this.setupOverlayContext.strokeStyle = color;
         this.setupOverlayContext.lineWidth = 3;
         this.setupOverlayContext.stroke();
-        
-        // Draw inner filled circle
         this.setupOverlayContext.beginPath();
         this.setupOverlayContext.arc(x, y, 8, 0, 2 * Math.PI);
         this.setupOverlayContext.fillStyle = color;
         this.setupOverlayContext.fill();
-        
-        // Draw number
         this.setupOverlayContext.fillStyle = 'white';
         this.setupOverlayContext.font = 'bold 12px Arial';
         this.setupOverlayContext.textAlign = 'center';
         this.setupOverlayContext.textBaseline = 'middle';
-        this.setupOverlayContext.fillText(number.toString(), x, y);
+        this.setupOverlayContext.fillText('1', x, y);
     }
     
     /**
@@ -211,12 +200,10 @@ class UIController {
     updateSetupInstructions() {
         const instructionsElement = document.getElementById('setup-instructions');
         if (!instructionsElement) return;
-        
-        const pointNumber = this.selectedPoints.length + 1;
-        if (pointNumber <= 4) {
-            instructionsElement.textContent = `Tap center of marker ${pointNumber}/4`;
+        if (this.selectedPoints.length === 0) {
+            instructionsElement.textContent = 'Tap the point you want to track.';
         } else {
-            instructionsElement.textContent = 'All markers selected. Confirm setup to continue.';
+            instructionsElement.textContent = 'Marker selected. Confirm setup to continue.';
         }
     }
     
@@ -304,7 +291,7 @@ class UIController {
      * @returns {boolean}
      */
     hasMarkersSetup() {
-        return this.selectedPoints.length === 4;
+        return this.selectedPoints.length === 1;
     }
     
     /**
@@ -392,29 +379,18 @@ class UIController {
      * Confirm setup and start tracking
      */
     confirmSetup() {
-        if (this.selectedPoints.length !== 4) {
-            alert('Please select all 4 marker points before confirming.');
+        if (this.selectedPoints.length !== 1) {
+            alert('Please select a marker point before confirming.');
             return;
         }
-        
-        console.log('Confirming setup with points:', this.selectedPoints);
-        
+        console.log('Confirming setup with point:', this.selectedPoints[0]);
         try {
-            // Get current frame from display canvas
             const imageData = this.ctx.getImageData(0, 0, this.displayCanvas.width, this.displayCanvas.height);
-            
-            // Setup corner tracking with selected points
             this.cornerTracker.setupMarkers(this.selectedPoints, imageData);
-            
-            // Exit setup mode
             this.endSetupMode();
-            
-            // Show recalibrate button
             this.recalibrateButton.style.display = 'inline-block';
-            
             console.log('Marker tracking setup complete');
             console.log('Corner tracker is tracking:', this.cornerTracker.isTracking());
-            
         } catch (error) {
             console.error('Error setting up marker tracking:', error);
             alert('Error setting up marker tracking. Please try again.');

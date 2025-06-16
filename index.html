@@ -17,39 +17,37 @@
         <h1>Golf Putting Speed Trainer</h1>
     </header>
     
-    <main>
+    <main class="main-landscape">
         <div class="camera-container">
             <video id="camera-feed" autoplay playsinline></video>
             <canvas id="processing-canvas" style="display:none;"></canvas>
             <canvas id="display-canvas"></canvas>
             <!-- Setup overlay will be added dynamically by JavaScript -->
         </div>
-        
-        <!-- Setup instructions (shown during marker setup) -->
-        <div id="setup-instructions-container" class="setup-instructions-container" style="display:none;">
-            <p id="setup-instructions" class="setup-instructions"></p>
-        </div>
-        
-        <div class="camera-controls">
-            <button id="start-camera">Start Camera</button>
-            <button id="capture-button" disabled>Capture Image</button>
-            <button id="load-sample-button">Load Sample Image</button>
-            <button id="setup-markers-button">Setup Markers</button>
-            <button id="recalibrate-button" style="display:none;">Recalibrate</button>
-            <button id="analyze-button" style="display:none;">Analyze Capture</button>
-            <button id="back-to-live-button" style="display:none;">Back to Live Feed</button>
-            <button id="new-capture-button" style="display:none;">New Capture</button>
-            
-            <!-- Setup mode buttons -->
-            <button id="confirm-setup-button" style="display:none;">Confirm Setup</button>
-            <button id="cancel-setup-button" style="display:none;">Cancel Setup</button>
-        </div>
-        
-        <!-- Debug information section -->
-        <div id="debug-log-container" class="debug-log-container">
-            <h3>Debug Information</h3>
-            <div id="debug-log" class="debug-log"></div>
-            <button id="clear-debug-log" class="small-button">Clear Log</button>
+        <div class="side-panel">
+            <!-- Setup instructions (shown during marker setup) -->
+            <div id="setup-instructions-container" class="setup-instructions-container" style="display:none;">
+                <p id="setup-instructions" class="setup-instructions"></p>
+            </div>
+            <div class="camera-controls">
+                <button id="start-camera">Start Camera</button>
+                <button id="capture-button" disabled>Capture Image</button>
+                <button id="load-sample-button">Load Sample Image</button>
+                <button id="setup-markers-button">Setup Marker</button>
+                <button id="recalibrate-button" style="display:none;">Recalibrate</button>
+                <button id="analyze-button" style="display:none;">Analyze Capture</button>
+                <button id="back-to-live-button" style="display:none;">Back to Live Feed</button>
+                <button id="new-capture-button" style="display:none;">New Capture</button>
+                <!-- Setup mode buttons -->
+                <button id="confirm-setup-button" style="display:none;">Confirm Setup</button>
+                <button id="cancel-setup-button" style="display:none;">Cancel Setup</button>
+            </div>
+            <!-- Debug information section -->
+            <div id="debug-log-container" class="debug-log-container">
+                <h3>Debug Information</h3>
+                <div id="debug-log" class="debug-log"></div>
+                <button id="clear-debug-log" class="small-button">Clear Log</button>
+            </div>
         </div>
     </main>
     
