@@ -404,31 +404,29 @@ class UIController {
     drawFrame(imageData) {
         // Draw the image
         this.ctx.putImageData(imageData, 0, 0);
-        
-        // If corner tracking is active, track markers and draw indicators
+        // If corner tracking is active, track marker and draw indicator
         if (this.cornerTracker.isTracking()) {
             console.log('Drawing frame with tracking active');
             try {
-                // Track markers in current frame
+                // Track marker in current frame
                 const trackingResults = this.cornerTracker.trackMarkers(imageData);
                 console.log('Tracking results:', trackingResults);
-                
-                // Draw tracking indicators
+                // Draw tracking indicator at updated position
                 this.cornerTracker.drawTrackingIndicators(this.ctx);
-                
                 // Log tracking quality for debugging
                 const qualities = this.cornerTracker.getTrackingQuality();
                 const avgQuality = qualities.reduce((sum, q) => sum + q, 0) / qualities.length;
                 if (avgQuality < 0.5) {
                     console.warn('Low tracking quality:', qualities);
                 }
-                
+                // Log current marker position
+                const pos = this.cornerTracker.getCurrentPositions()[0];
+                console.log('Current tracked marker position:', pos);
             } catch (error) {
                 console.error('Error during marker tracking:', error);
             }
         } else {
-            // Only log occasionally to avoid spam
-            if (Math.random() < 0.01) { // 1% chance
+            if (Math.random() < 0.01) {
                 console.log('Corner tracker not active');
             }
         }

@@ -116,7 +116,6 @@ class CornerTracker {
      */
     trackSingleMarker(imageData, markerIndex, lastPosition) {
         const referenceCorners = this.referenceCorners[markerIndex];
-        
         if (!referenceCorners || referenceCorners.length === 0) {
             return {
                 index: markerIndex,
@@ -126,14 +125,15 @@ class CornerTracker {
                 quality: 0
             };
         }
-
-        // Only process the region at the last known position (no grid search)
         try {
             const currentRegion = this.extractRegion(imageData, lastPosition.x, lastPosition.y);
             const currentCorners = this.detectCorners(currentRegion);
             const score = this.matchCorners(referenceCorners, currentCorners);
-
+            console.log(`[trackSingleMarker] Last pos: (${lastPosition.x.toFixed(1)}, ${lastPosition.y.toFixed(1)}), Score: ${score}`);
             if (score > this.matchThreshold) {
+                // For now, just return the same position (no search).
+                // In a real tracker, you'd search nearby for the best match.
+                console.log(`[trackSingleMarker] Marker FOUND at (${lastPosition.x.toFixed(1)}, ${lastPosition.y.toFixed(1)}) with quality ${score}`);
                 return {
                     index: markerIndex,
                     found: true,
@@ -142,6 +142,7 @@ class CornerTracker {
                     quality: score
                 };
             } else {
+                console.log(`[trackSingleMarker] Marker NOT found, keeping last position (${lastPosition.x.toFixed(1)}, ${lastPosition.y.toFixed(1)}) with quality ${score}`);
                 return {
                     index: markerIndex,
                     found: false,
