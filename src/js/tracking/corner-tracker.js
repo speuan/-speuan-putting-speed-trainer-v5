@@ -125,39 +125,49 @@ class CornerTracker {
                 quality: 0
             };
         }
-        try {
-            const currentRegion = this.extractRegion(imageData, lastPosition.x, lastPosition.y);
-            const currentCorners = this.detectCorners(currentRegion);
-            const score = this.matchCorners(referenceCorners, currentCorners);
-            console.log(`[trackSingleMarker] Last pos: (${lastPosition.x.toFixed(1)}, ${lastPosition.y.toFixed(1)}), Score: ${score}`);
-            if (score > this.matchThreshold) {
-                // For now, just return the same position (no search).
-                // In a real tracker, you'd search nearby for the best match.
-                console.log(`[trackSingleMarker] Marker FOUND at (${lastPosition.x.toFixed(1)}, ${lastPosition.y.toFixed(1)}) with quality ${score}`);
-                return {
-                    index: markerIndex,
-                    found: true,
-                    x: lastPosition.x,
-                    y: lastPosition.y,
-                    quality: score
-                };
-            } else {
-                console.log(`[trackSingleMarker] Marker NOT found, keeping last position (${lastPosition.x.toFixed(1)}, ${lastPosition.y.toFixed(1)}) with quality ${score}`);
-                return {
-                    index: markerIndex,
-                    found: false,
-                    x: lastPosition.x,
-                    y: lastPosition.y,
-                    quality: score
-                };
+        // Local search window size (pixels)
+        const searchRadius = 20;
+        let bestScore = -Infinity;
+        let bestPos = { x: lastPosition.x, y: lastPosition.y };
+        let found = false;
+        // Search a grid around the last known position
+        for (let dy = -searchRadius; dy <= searchRadius; dy += 4) {
+            for (let dx = -searchRadius; dx <= searchRadius; dx += 4) {
+                const cx = lastPosition.x + dx;
+                const cy = lastPosition.y + dy;
+                // Bounds check
+                if (cx < 0 || cy < 0 || cx >= imageData.width || cy >= imageData.height) continue;
+                try {
+                    const region = this.extractRegion(imageData, cx, cy);
+                    const corners = this.detectCorners(region);
+                    const score = this.matchCorners(referenceCorners, corners);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestPos = { x: cx, y: cy };
+                        found = score > this.matchThreshold;
+                    }
+                } catch (e) {
+                    // Ignore extraction errors
+                }
             }
-        } catch (error) {
+        }
+        if (found) {
+            console.log(`[trackSingleMarker] Marker FOUND at (${bestPos.x.toFixed(1)}, ${bestPos.y.toFixed(1)}) with quality ${bestScore}`);
+            return {
+                index: markerIndex,
+                found: true,
+                x: bestPos.x,
+                y: bestPos.y,
+                quality: bestScore
+            };
+        } else {
+            console.log(`[trackSingleMarker] Marker NOT found, keeping last position (${lastPosition.x.toFixed(1)}, ${lastPosition.y.toFixed(1)}) with best score ${bestScore}`);
             return {
                 index: markerIndex,
                 found: false,
                 x: lastPosition.x,
                 y: lastPosition.y,
-                quality: 0
+                quality: bestScore
             };
         }
     }
