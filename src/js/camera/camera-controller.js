@@ -32,6 +32,10 @@ class CameraController {
      */
     async startCamera() {
         console.log('Starting camera...');
+        console.log('Video element:', this.videoElement);
+        console.log('Processing canvas:', this.processingCanvas);
+        console.log('Display canvas:', this.displayCanvas);
+        
         try {
             const constraints = {
                 video: {
@@ -41,16 +45,27 @@ class CameraController {
                 }
             };
 
+            console.log('Requesting user media with constraints:', constraints);
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.video = this.videoElement; // Make sure we have the video reference
+            
+            console.log('Stream acquired:', this.stream);
+            console.log('Setting video srcObject...');
             this.video.srcObject = this.stream;
             this.isStreaming = false; // Will be set to true when video loads
             
-            console.log('Camera stream acquired');
+            console.log('Camera stream acquired, waiting for metadata...');
             
             // Wait for video to be ready
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
+                // Add timeout to catch if metadata never loads
+                const timeout = setTimeout(() => {
+                    console.error('Timeout waiting for video metadata');
+                    reject(new Error('Timeout waiting for video metadata'));
+                }, 10000); // 10 second timeout
+                
                 this.video.onloadedmetadata = () => {
+                    clearTimeout(timeout);
                     console.log('Video metadata loaded', {
                         width: this.video.videoWidth,
                         height: this.video.videoHeight
@@ -62,15 +77,31 @@ class CameraController {
                     this.displayCanvas.width = this.video.videoWidth;
                     this.displayCanvas.height = this.video.videoHeight;
                     
+                    console.log('Canvas dimensions set:', {
+                        processing: { width: this.processingCanvas.width, height: this.processingCanvas.height },
+                        display: { width: this.displayCanvas.width, height: this.displayCanvas.height }
+                    });
+                    
                     // Set streaming flag
                     this.isStreaming = true;
                     
                     console.log('Camera ready for streaming');
                     resolve();
                 };
+                
+                this.video.onerror = (error) => {
+                    clearTimeout(timeout);
+                    console.error('Video error:', error);
+                    reject(error);
+                };
             });
         } catch (error) {
             console.error('Error accessing camera:', error);
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
             alert('Error accessing camera. Please check permissions and try again.');
             throw error;
         }

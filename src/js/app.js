@@ -6,6 +6,33 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded and parsed');
     
+    // Validate required elements exist
+    const requiredElements = [
+        'camera-feed',
+        'processing-canvas', 
+        'display-canvas',
+        'start-camera',
+        'capture-button'
+    ];
+    
+    const missingElements = [];
+    requiredElements.forEach(id => {
+        const element = document.getElementById(id);
+        if (!element) {
+            missingElements.push(id);
+        } else {
+            console.log(`✓ Found element: ${id}`, element);
+        }
+    });
+    
+    if (missingElements.length > 0) {
+        console.error('Missing required elements:', missingElements);
+        alert('Missing required HTML elements. Please check the page structure.');
+        return;
+    }
+    
+    console.log('All required elements found, initializing controllers...');
+    
     // Debug mode flag
     const debugMode = false; // Set to false to disable visual debugging
     
@@ -81,16 +108,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize event listeners
     startCameraBtn.addEventListener('click', async () => {
         console.log('Start camera button clicked');
+        console.log('Camera controller:', cameraController);
+        console.log('UI controller:', uiController);
+        
         try {
+            console.log('Calling cameraController.startCamera()...');
             await cameraController.startCamera();
+            console.log('Camera started successfully, calling uiController.showLiveView()...');
+            
             uiController.showLiveView();
+            console.log('UI updated to live view');
             
             // Start animation loop for live tracking
+            console.log('Starting animation loop...');
             cameraController.animate();
+            console.log('Animation loop started');
             
             captureBtn.disabled = false;
             startCameraBtn.disabled = true;
-            console.log('Camera started successfully');
+            console.log('Buttons updated - camera startup complete');
             
             // Start loading the detection model in the background
             ballDetector.initialize().then(() => {
@@ -100,6 +136,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } catch (error) {
             console.error('Failed to start camera:', error);
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
             alert('Failed to start camera. Please check permissions and try again.');
         }
     });
@@ -230,22 +271,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     confirmSetupBtn.addEventListener('click', () => {
         console.log('Confirm setup button clicked');
-        const selectedPoints = uiController.getSelectedPoints();
         
-        if (selectedPoints.length === 4) {
-            console.log('Setup confirmed with points:', selectedPoints);
-            
-            // TODO: Initialize corner tracking with selected points
-            // This will be implemented in Step 2
-            
-            uiController.endSetupMode();
-            setupInstructionsContainer.style.display = 'none';
-            
-            // Show success message
-            alert('Marker setup complete! Tracking will begin.');
-        } else {
-            alert('Please select all 4 marker points before confirming.');
-        }
+        // Call the UI controller's confirmSetup method
+        uiController.confirmSetup();
+        
+        // Hide setup instructions
+        setupInstructionsContainer.style.display = 'none';
     });
     
     cancelSetupBtn.addEventListener('click', () => {

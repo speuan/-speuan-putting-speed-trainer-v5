@@ -28,7 +28,7 @@ class UIController {
         this.selectedPoints = [];
         
         // Initialize corner tracker
-        this.cornerTracker = new CornerTracker();
+        this.cornerTracker = new CornerTracker(true); // Enable debug mode
         
         // Canvas context
         this.ctx = this.displayCanvas.getContext('2d');
@@ -37,6 +37,19 @@ class UIController {
         this.bindEvents();
         
         console.log('UIController initialized');
+    }
+    
+    /**
+     * Bind event handlers
+     */
+    bindEvents() {
+        // Create setup overlay
+        this.createSetupOverlay();
+        
+        // Setup click handler for point selection
+        this.setupClickHandler();
+        
+        console.log('UI event handlers bound');
     }
     
     /**
@@ -394,12 +407,13 @@ class UIController {
             this.cornerTracker.setupMarkers(this.selectedPoints, imageData);
             
             // Exit setup mode
-            this.exitSetupMode();
+            this.endSetupMode();
             
             // Show recalibrate button
             this.recalibrateButton.style.display = 'inline-block';
             
             console.log('Marker tracking setup complete');
+            console.log('Corner tracker is tracking:', this.cornerTracker.isTracking());
             
         } catch (error) {
             console.error('Error setting up marker tracking:', error);
@@ -417,9 +431,11 @@ class UIController {
         
         // If corner tracking is active, track markers and draw indicators
         if (this.cornerTracker.isTracking()) {
+            console.log('Drawing frame with tracking active');
             try {
                 // Track markers in current frame
                 const trackingResults = this.cornerTracker.trackMarkers(imageData);
+                console.log('Tracking results:', trackingResults);
                 
                 // Draw tracking indicators
                 this.cornerTracker.drawTrackingIndicators(this.ctx);
@@ -433,6 +449,11 @@ class UIController {
                 
             } catch (error) {
                 console.error('Error during marker tracking:', error);
+            }
+        } else {
+            // Only log occasionally to avoid spam
+            if (Math.random() < 0.01) { // 1% chance
+                console.log('Corner tracker not active');
             }
         }
     }
