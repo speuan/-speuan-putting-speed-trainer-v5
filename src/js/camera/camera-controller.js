@@ -44,7 +44,7 @@ class CameraController {
                     height: { ideal: 720 }
                 }
             };
-
+            
             console.log('Requesting user media with constraints:', constraints);
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.video = this.videoElement; // Make sure we have the video reference
@@ -232,7 +232,7 @@ class CameraController {
                 this.uiController.drawFrame(imageData);
             } else {
                 // Fallback: draw directly to display canvas
-                this.displayContext.putImageData(imageData, 0, 0);
+        this.displayContext.putImageData(imageData, 0, 0);
             }
             
         } catch (error) {

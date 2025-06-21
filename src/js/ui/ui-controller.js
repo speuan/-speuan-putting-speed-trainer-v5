@@ -311,7 +311,7 @@ class UIController {
         this.selectedPoints = [];
         console.log('Selected points reset');
     }
-
+    
     /**
      * Show the captured image on the display canvas
      * @param {Object} frame - The captured frame data
