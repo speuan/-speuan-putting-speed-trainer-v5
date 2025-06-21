@@ -54,19 +54,23 @@ class CameraController {
             this.video.srcObject = this.stream;
             this.isStreaming = false; // Will be set to true when video loads
             
-            console.log('Camera stream acquired, waiting for metadata...');
+            // Start playing the video
+            this.video.play();
+            
+            console.log('Camera stream acquired, waiting for video to be playable...');
             
             // Wait for video to be ready
             return new Promise((resolve, reject) => {
                 // Add timeout to catch if metadata never loads
                 const timeout = setTimeout(() => {
-                    console.error('Timeout waiting for video metadata');
-                    reject(new Error('Timeout waiting for video metadata'));
+                    console.error('Timeout waiting for video to become playable');
+                    reject(new Error('Timeout waiting for video to become playable'));
                 }, 10000); // 10 second timeout
                 
-                this.video.onloadedmetadata = () => {
+                this.video.oncanplay = () => {
                     clearTimeout(timeout);
-                    console.log('Video metadata loaded', {
+                    console.log('Video is now playable (oncanplay event fired)');
+                    console.log('Video dimensions:', {
                         width: this.video.videoWidth,
                         height: this.video.videoHeight
                     });
@@ -333,13 +337,11 @@ class CameraController {
      */
     animate() {
         if (!this.isStreaming) {
+            console.warn('Animation stopped: isStreaming is false');
             return;
         }
         
         try {
-            // Draw video frame to processing canvas
-            this.processingContext.drawImage(this.video, 0, 0, this.processingCanvas.width, this.processingCanvas.height);
-            
             // Get image data and draw frame (includes tracking overlays)
             this.drawFrame();
             
